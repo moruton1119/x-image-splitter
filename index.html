@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="X(旧Twitter)で流行りの分割投稿を簡単作成！1枚の写真を任意の分割レイアウトに自動トリミング。完全ローカル処理でサーバー送信ゼロ。">
-<meta property="og:title" content="X 分割くん — 写真分割ツール">
-<meta property="og:description" content="1枚の写真をX投稿用に自動分割。完全ローカル処理。">
+<meta name="description" content="X(旧Twitter)投稿用写真ツール。1枚の写真を分割して大きく見せる「分割」と、投稿前の見え方チェック「プレビュー」。完全ローカル処理でサーバー送信ゼロ。">
+<meta property="og:title" content="X写真スタジオ — 分割・プレビュー">
+<meta property="og:description" content="1枚の写真を分割して大きく見せる＋投稿前プレビュー。完全ローカル処理。">
 <meta property="og:type" content="website">
-<title>X 分割くん — 写真分割ツール</title>
+<title>X写真スタジオ — 分割・プレビュー</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%231f2228'/%3E%3Cpath d='M25 25 L75 75 M75 25 L25 75' stroke='%231d9bf0' stroke-width='10' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
 /* ═══════════════════════════════════════════════════════════════
@@ -27,13 +27,12 @@
   --border-soft: rgba(255, 255, 255, 0.05);
   --accent:        #ffffff;
   --accent-on:     #1f2228;
-  --accent-hover:  rgba(255, 255, 255, 0.9);
-  --accent-active: rgba(255, 255, 255, 0.8);
-  /* X extension */
   --x-blue:        #1d9bf0;
   --x-blue-hover:  #1a8cd8;
   --x-blue-active: #1779c4;
   --x-blue-dim:    rgba(29, 155, 240, 0.15);
+  --x-bg: #15181c;       /* X app surface */
+  --x-bg-deep: #000;     /* X viewer */
   --success: #16a34a;
   --warn:    #eab308;
   --danger:  #dc2626;
@@ -45,7 +44,7 @@
   --leading-body: 1.5; --leading-tight: 1.2;
   --space-1: 4px; --space-2: 8px; --space-3: 12px; --space-4: 16px;
   --space-5: 20px; --space-6: 24px; --space-8: 32px; --space-12: 48px;
-  --radius-sm: 0px; --radius-md: 0px; --radius-lg: 4px; --radius-pill: 9999px;
+  --radius-lg: 4px; --radius-pill: 9999px;
   --elev-ring: 0 0 0 1px var(--border);
   --focus-ring: 0 0 0 3px rgba(59, 130, 246, 0.5);
   --motion-fast: 150ms;
@@ -63,479 +62,292 @@ body {
   -webkit-font-smoothing: antialiased;
   min-height: 100vh;
 }
-button, input, select { font-family: inherit; }
+button, input, select, textarea { font-family: inherit; }
 button { cursor: pointer; }
 :focus-visible { outline: none; box-shadow: var(--focus-ring); }
 
 .container { max-width: var(--container-max); margin: 0 auto; padding: 0 var(--space-4); }
 
-/* ── Header ─────────────────────────────── */
+/* ── Header + tabs ──────────────────────── */
 .site-header {
   position: sticky; top: 0; z-index: 100;
-  background: rgba(31, 34, 40, 0.85);
+  background: rgba(31, 34, 40, 0.9);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--border);
 }
-.site-header .container {
-  display: flex; align-items: center; justify-content: space-between;
-  height: 53px; /* X app header height */
-}
+.site-header .container { display: flex; align-items: center; justify-content: space-between; height: 53px; }
 .brand { display: flex; align-items: center; gap: var(--space-3); }
 .brand svg { display: block; }
-.brand-title {
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: 600;
-  letter-spacing: 0.5px;
-}
+.brand-title { font-family: var(--font-display); font-size: var(--text-lg); font-weight: 600; letter-spacing: 0.5px; }
 .brand-title .accent-blue { color: var(--x-blue); }
 .header-local {
   display: flex; align-items: center; gap: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--muted);
-  border: 1px solid var(--border);
-  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted);
+  border: 1px solid var(--border); padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-pill);
 }
-.header-local .dot {
-  width: 7px; height: 7px; border-radius: 50%;
-  background: var(--success);
-  animation: pulse 2s infinite;
-}
+.header-local .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--success); animation: pulse 2s infinite; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.main-tabs {
+  display: flex; gap: var(--space-2);
+  max-width: var(--container-max); margin: var(--space-5) auto 0;
+  padding: 0 var(--space-4);
+}
+.main-tab {
+  flex: 1;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--fg-2);
+  font-size: var(--text-base); font-weight: 600;
+  padding: var(--space-3) var(--space-4);
+  display: flex; align-items: center; justify-content: center; gap: var(--space-2);
+  transition: all var(--motion-fast);
+}
+.main-tab:hover { border-color: rgba(255,255,255,0.3); color: var(--fg); }
+.main-tab.active { border-color: var(--x-blue); color: var(--x-blue); background: var(--x-blue-dim); }
+.main-tab small { font-size: var(--text-xs); font-weight: 400; color: var(--muted); }
 
 /* ── Hero ───────────────────────────────── */
-.hero { padding: var(--space-8) 0 var(--space-4); text-align: center; }
-.hero h1 {
-  font-family: var(--font-display);
-  font-size: clamp(var(--text-2xl), 6vw, 44px);
-  font-weight: 600;
-  letter-spacing: 1px;
-}
-.hero p { color: var(--fg-2); margin-top: var(--space-2); }
+.hero { padding: var(--space-6) 0 var(--space-4); text-align: center; }
+.hero h1 { font-family: var(--font-display); font-size: clamp(24px, 5vw, 36px); font-weight: 600; letter-spacing: 1px; }
+.hero p { color: var(--fg-2); margin-top: var(--space-2); font-size: var(--text-sm); }
 .hero .badge {
-  display: inline-block;
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--x-blue);
-  border: 1px solid rgba(29, 155, 240, 0.4);
-  background: var(--x-blue-dim);
-  border-radius: var(--radius-pill);
-  padding: 3px 12px;
-  margin-bottom: var(--space-3);
-  letter-spacing: 1px;
+  display: inline-block; font-family: var(--font-mono); font-size: var(--text-xs);
+  color: var(--x-blue); border: 1px solid rgba(29, 155, 240, 0.4); background: var(--x-blue-dim);
+  border-radius: var(--radius-pill); padding: 3px 12px; margin-bottom: var(--space-3); letter-spacing: 1px;
 }
 
 /* ── Panel / card ──────────────────────── */
 .panel {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: var(--space-5);
-  margin-bottom: var(--space-5);
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 16px; padding: var(--space-5); margin-bottom: var(--space-5);
 }
-.step-head {
-  display: flex; align-items: center; gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
+.step-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
 .step-num {
-  font-family: var(--font-display);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--x-blue);
-  border: 1px solid rgba(29, 155, 240, 0.4);
-  background: var(--x-blue-dim);
-  width: 28px; height: 28px;
-  display: grid; place-items: center;
-  border-radius: 50%;
-  flex-shrink: 0;
+  font-family: var(--font-display); font-size: var(--text-sm); font-weight: 600; color: var(--x-blue);
+  border: 1px solid rgba(29, 155, 240, 0.4); background: var(--x-blue-dim);
+  width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; flex-shrink: 0;
 }
-.step-title {
-  font-size: var(--text-lg);
-  font-weight: 700;
-}
+.step-title { font-size: var(--text-lg); font-weight: 700; }
 .step-desc { color: var(--muted); font-size: var(--text-sm); margin-top: 2px; }
 
 /* ── Dropzone ───────────────────────────── */
 .dropzone {
-  border: 2px dashed var(--border);
-  border-radius: 16px;
-  padding: var(--space-12) var(--space-4);
-  text-align: center;
-  transition: border-color var(--motion-fast), background var(--motion-fast);
-  cursor: pointer;
+  border: 2px dashed var(--border); border-radius: 16px;
+  padding: var(--space-12) var(--space-4); text-align: center;
+  transition: border-color var(--motion-fast), background var(--motion-fast); cursor: pointer;
 }
-.dropzone:hover, .dropzone.dragover {
-  border-color: var(--x-blue);
-  background: var(--x-blue-dim);
-}
+.dropzone:hover, .dropzone.dragover { border-color: var(--x-blue); background: var(--x-blue-dim); }
 .dropzone .icon { font-size: 40px; margin-bottom: var(--space-2); }
 .dropzone .main { font-weight: 600; }
 .dropzone .sub { color: var(--muted); font-size: var(--text-sm); margin-top: var(--space-1); }
-.dropzone.loaded {
-  padding: var(--space-4);
-  cursor: default;
-}
-.src-preview {
-  display: flex; align-items: center; gap: var(--space-4);
-  flex-wrap: wrap;
-}
-.src-preview img {
-  max-width: 200px; max-height: 150px;
-  border-radius: 8px;
-  border: 1px solid var(--border);
-  object-fit: contain;
-  background: #000;
-}
+.dropzone.loaded { padding: var(--space-4); cursor: default; }
+.src-preview { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; }
+.src-preview img { max-width: 200px; max-height: 150px; border-radius: 8px; border: 1px solid var(--border); object-fit: contain; background: #000; }
 .src-info { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--fg-2); }
 .src-info .dim { color: var(--x-blue); }
-.link-btn {
-  background: none; border: none;
-  color: var(--x-blue);
-  font-size: var(--text-sm);
-  text-decoration: underline;
-  padding: var(--space-1);
-}
+.link-btn { background: none; border: none; color: var(--x-blue); font-size: var(--text-sm); text-decoration: underline; padding: var(--space-1); }
 
-/* ── Layout presets ─────────────────────── */
-.layout-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-  gap: var(--space-3);
+/* ── Mode / pieces / style ─────────────── */
+.opt-row { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.opt-card {
+  flex: 1 1 180px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+  padding: var(--space-4); text-align: left; color: var(--fg-2);
+  transition: all var(--motion-fast);
 }
-.layout-opt {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-3) var(--space-2);
-  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
-  transition: border-color var(--motion-fast), background var(--motion-fast);
+.opt-card:hover { border-color: rgba(255,255,255,0.3); }
+.opt-card.selected { border-color: var(--x-blue); background: var(--x-blue-dim); }
+.opt-card .t { font-weight: 700; color: var(--fg); font-size: var(--text-base); display: flex; align-items: center; gap: 6px; }
+.opt-card.selected .t { color: var(--x-blue); }
+.opt-card .d { font-size: var(--text-sm); color: var(--muted); margin-top: var(--space-1); }
+.opt-card .pill {
+  font-family: var(--font-mono); font-size: var(--text-sm);
+  background: var(--bg); border: 1px solid var(--border);
+  color: var(--fg-2); padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill); transition: all var(--motion-fast);
 }
-.layout-opt:hover { border-color: rgba(255,255,255,0.3); }
-.layout-opt.selected {
-  border-color: var(--x-blue);
-  background: var(--x-blue-dim);
-  box-shadow: 0 0 0 1px var(--x-blue);
-}
-.layout-opt .cells {
-  display: grid;
-  gap: 2px;
-  width: 56px; height: 56px;
-}
-.layout-opt .cells span {
-  background: rgba(255,255,255,0.25);
-  border-radius: 2px;
-}
-.layout-opt.selected .cells span { background: var(--x-blue); opacity: 0.85; }
-.layout-opt .label {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--fg-2);
-}
-.layout-opt.selected .label { color: var(--x-blue); font-weight: 600; }
-.layout-custom {
-  display: flex; align-items: center; gap: var(--space-2);
-  margin-top: var(--space-4);
-  flex-wrap: wrap;
-}
-.layout-custom label {
-  font-family: var(--font-mono); font-size: var(--text-sm); color: var(--fg-2);
-}
-.num-input {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--fg);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  width: 64px;
-  padding: var(--space-2);
-  border-radius: var(--radius-lg);
-  text-align: center;
-}
-.num-input:focus { border-color: var(--x-blue); }
-.auto-note {
-  margin-top: var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--muted);
-}
-.auto-note .rec {
-  color: var(--x-blue);
-  text-decoration: underline;
-  cursor: pointer;
-}
+.opt-card .pill.selected { border-color: var(--x-blue); color: var(--x-blue); background: var(--x-blue-dim); font-weight: 700; }
+.pieces-row { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
+.auto-note { margin-top: var(--space-3); font-size: var(--text-sm); color: var(--muted); }
+.auto-note .rec { color: var(--x-blue); text-decoration: underline; cursor: pointer; }
+.dim-note { margin-top: var(--space-3); font-size: var(--text-sm); color: var(--fg-2); line-height: 1.6; }
+.dim-note b { color: var(--x-blue); }
 
 /* ── Settings ───────────────────────────── */
-.settings-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: var(--space-5);
-}
+.settings-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-5); }
 .setting-block .set-label {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: var(--space-2);
-  display: block;
+  font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted);
+  text-transform: uppercase; letter-spacing: 1px; margin-bottom: var(--space-2); display: block;
 }
 .seg-group { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .seg {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  color: var(--fg-2);
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  padding: var(--space-2) var(--space-3);
-  border-radius: var(--radius-pill);
-  transition: all var(--motion-fast);
+  background: var(--bg); border: 1px solid var(--border); color: var(--fg-2);
+  font-family: var(--font-mono); font-size: var(--text-sm);
+  padding: var(--space-2) var(--space-3); border-radius: var(--radius-pill); transition: all var(--motion-fast);
 }
 .seg:hover { border-color: rgba(255,255,255,0.3); color: var(--fg); }
-.seg.selected {
-  border-color: var(--x-blue);
-  color: var(--x-blue);
-  background: var(--x-blue-dim);
-  font-weight: 600;
-}
-.range-row {
-  display: flex; align-items: center; gap: var(--space-3);
-}
-.range-row input[type="range"] {
-  flex: 1;
-  accent-color: var(--x-blue);
-  height: 4px;
-}
-.range-val {
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--x-blue);
-  min-width: 52px;
-  text-align: right;
-}
-.gap-visual {
-  font-size: var(--text-xs);
-  color: var(--muted);
-  margin-top: var(--space-1);
-  line-height: 1.4;
-}
+.seg.selected { border-color: var(--x-blue); color: var(--x-blue); background: var(--x-blue-dim); font-weight: 600; }
+.range-row { display: flex; align-items: center; gap: var(--space-3); }
+.range-row input[type="range"] { flex: 1; accent-color: var(--x-blue); height: 4px; }
+.range-val { font-family: var(--font-mono); font-size: var(--text-sm); color: var(--x-blue); min-width: 52px; text-align: right; }
+.gap-visual { font-size: var(--text-xs); color: var(--muted); margin-top: var(--space-1); line-height: 1.4; }
 
-/* ── X post preview ─────────────────────── */
+/* ── X timeline simulation ─────────────── */
 .phone-frame {
-  max-width: 400px;
-  margin: 0 auto;
-  background: #15181c; /* X app surface */
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: var(--space-3);
+  max-width: 400px; margin: 0 auto;
+  background: var(--x-bg); border: 1px solid var(--border);
+  border-radius: 16px; overflow: hidden;
 }
-.post-card {
-  background: transparent;
-  border: none;
-  padding: var(--space-2) var(--space-2) 0;
-  margin: 0;
-  max-width: none;
+.phone-status {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px var(--space-4);
+  font-family: var(--font-body); font-size: 13px; font-weight: 600;
 }
-.post-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); }
+.phone-tabs {
+  display: flex; border-bottom: 1px solid var(--border);
+}
+.phone-tabs span { flex: 1; text-align: center; padding: var(--space-2); font-size: var(--text-sm); color: var(--muted); }
+.phone-tabs span.on { color: var(--fg); font-weight: 700; border-bottom: 2px solid var(--x-blue); }
+.post-card { padding: var(--space-3) var(--space-3) 0; }
+.post-head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
 .post-avatar {
   width: 40px; height: 40px; border-radius: 50%;
   background: linear-gradient(135deg, var(--x-blue), #7c3aed);
   display: grid; place-items: center;
-  font-family: var(--font-display); font-weight: 700; font-size: var(--text-base);
-  flex-shrink: 0;
+  font-family: var(--font-display); font-weight: 700; font-size: var(--text-base); flex-shrink: 0;
 }
 .post-names .name { font-weight: 700; font-size: var(--text-sm); display: flex; align-items: center; gap: 4px; }
 .post-names .handle { color: var(--muted); font-size: var(--text-sm); font-family: var(--font-mono); }
-.post-text { margin-bottom: var(--space-3); color: var(--fg-2); font-size: var(--text-sm); }
-.post-media {
-  border-radius: 16px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-  margin-bottom: var(--space-3);
-  position: relative;
-}
-.carousel {
-  display: flex;
-  gap: 2px; /* X carousel gap */
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
+.post-text { color: var(--fg-2); font-size: var(--text-sm); margin-bottom: var(--space-3); white-space: pre-wrap; word-break: break-word; }
+.post-text .text-toggle { color: var(--x-blue); background: none; border: none; font-size: var(--text-sm); }
+.post-media { border-radius: 16px; overflow: hidden; border: 1px solid var(--border); margin-bottom: var(--space-2); position: relative; }
+.carousel { display: flex; gap: 2px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; -ms-overflow-style: none; }
 .carousel::-webkit-scrollbar { display: none; }
-.carousel .cell {
-  flex: 0 0 auto;
-  scroll-snap-align: start;
-  position: relative;
-  overflow: hidden;
-  border-radius: 4px;
-}
+.carousel .cell { flex: 0 0 auto; scroll-snap-align: start; position: relative; overflow: hidden; border-radius: 4px; }
 .carousel .cell img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.carousel .cell .idx {
-  position: absolute; top: 6px; left: 6px;
-  font-family: var(--font-mono); font-size: 10px;
-  background: rgba(0,0,0,0.7); color: #fff;
-  border-radius: var(--radius-pill);
-  padding: 1px 8px;
-  pointer-events: none;
-}
-.carousel .cell .cropped {
-  position: absolute; bottom: 6px; right: 6px;
-  font-family: var(--font-mono); font-size: 9px;
-  background: rgba(0,0,0,0.65); color: #ffd;
-  border-radius: var(--radius-pill);
-  padding: 1px 7px;
-  pointer-events: none;
-}
-.timeline-dots {
-  display: flex; justify-content: center; gap: 6px;
-  padding: var(--space-2) 0;
-}
-.timeline-dots span {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: rgba(255,255,255,0.3);
-}
+.carousel .cell .idx { position: absolute; top: 6px; left: 6px; font-family: var(--font-mono); font-size: 10px; background: rgba(0,0,0,0.7); color: #fff; border-radius: var(--radius-pill); padding: 1px 8px; pointer-events: none; }
+.carousel .cell .cropped { position: absolute; bottom: 6px; right: 6px; font-family: var(--font-mono); font-size: 9px; background: rgba(0,0,0,0.65); color: #ffd; border-radius: var(--radius-pill); padding: 1px 7px; pointer-events: none; }
+.two-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; }
+.two-grid .cell { position: relative; overflow: hidden; border-radius: 4px; }
+.two-grid .cell img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.two-grid .cell .idx { position: absolute; top: 6px; left: 6px; font-family: var(--font-mono); font-size: 10px; background: rgba(0,0,0,0.7); color: #fff; border-radius: var(--radius-pill); padding: 1px 8px; }
+.timeline-dots { display: flex; justify-content: center; gap: 6px; padding: var(--space-2) 0; }
+.timeline-dots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.3); }
 .timeline-dots span.on { background: var(--x-blue); }
-.post-actions {
-  display: flex; justify-content: space-around;
-  padding: var(--space-2) var(--space-4) 0;
-  color: var(--muted);
-  border-top: 1px solid var(--border-soft);
-  margin-top: var(--space-2);
-}
-.post-actions span { font-size: var(--text-xs); display: flex; align-items: center; gap: 4px; }
-.post-hint {
-  text-align: center;
-  color: var(--meta);
-  font-size: var(--text-xs);
-  margin-top: var(--space-3);
-  font-family: var(--font-mono);
-}
-/* expanded (tap) view */
-.expand-frame {
-  max-width: 400px;
-  margin: 0 auto;
-  background: #000;
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: var(--space-3);
-}
-.expand-title {
-  color: var(--muted); font-size: var(--text-xs); font-family: var(--font-mono);
-  text-align: center; margin-bottom: var(--space-3);
-}
+.post-actions { display: flex; justify-content: space-around; padding: var(--space-2) var(--space-4) var(--space-3); color: var(--muted); border-top: 1px solid var(--border-soft); }
+.post-actions span { font-size: var(--text-xs); }
+.post-hint { text-align: center; color: var(--meta); font-size: var(--text-xs); margin-top: var(--space-3); font-family: var(--font-mono); }
+.expand-frame { max-width: 400px; margin: 0 auto; background: var(--x-bg-deep); border: 1px solid var(--border); border-radius: 16px; padding: var(--space-3); }
+.expand-title { color: var(--muted); font-size: var(--text-xs); font-family: var(--font-mono); text-align: center; margin-bottom: var(--space-3); }
 #expandedStack { display: flex; flex-direction: column; gap: 4px; max-height: 70vh; overflow-y: auto; scrollbar-width: thin; }
 #expandedStack .exp { position: relative; border-radius: 8px; overflow: hidden; }
 #expandedStack .exp img { display: block; width: 100%; }
-#expandedStack .exp .idx {
-  position: absolute; top: 6px; left: 6px;
-  font-family: var(--font-mono); font-size: 10px;
-  background: rgba(0,0,0,0.7); color: #fff;
-  border-radius: var(--radius-pill); padding: 1px 8px;
-}
+#expandedStack .exp .idx { position: absolute; top: 6px; left: 6px; font-family: var(--font-mono); font-size: 10px; background: rgba(0,0,0,0.7); color: #fff; border-radius: var(--radius-pill); padding: 1px 8px; }
 .tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-4); justify-content: center; }
-.tab {
-  background: none; border: none;
-  font-family: var(--font-mono); font-size: var(--text-sm);
-  color: var(--muted);
-  padding: var(--space-2) var(--space-4);
-  border-bottom: 2px solid transparent;
-}
+.tab { background: none; border: none; font-family: var(--font-mono); font-size: var(--text-sm); color: var(--muted); padding: var(--space-2) var(--space-4); border-bottom: 2px solid transparent; }
 .tab.active { color: var(--x-blue); border-bottom-color: var(--x-blue); font-weight: 600; }
+.flat-grid { display: flex; justify-content: center; margin-bottom: var(--space-4); }
+.flat-grid .frame { display: grid; gap: 0; border: 1px dashed var(--border); padding: 2px; max-width: 100%; }
 
-/* flat grid preview */
-.flat-grid {
-  display: flex; justify-content: center;
-  margin-bottom: var(--space-4);
+/* ── viewer modal ───────────────────────── */
+#viewer {
+  position: fixed; inset: 0; z-index: 900;
+  background: var(--x-bg-deep);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-3);
+  padding: var(--space-4);
 }
-.flat-grid .frame { display: grid; gap: 0; border: 1px dashed var(--border); padding: 2px; }
+#viewer[hidden] { display: none; }
+#viewer img { max-width: 100%; max-height: 75vh; border-radius: 8px; }
+.viewer-nav { display: flex; align-items: center; gap: var(--space-5); }
+.viewer-nav button {
+  background: var(--surface-warm); border: 1px solid var(--border); color: var(--fg);
+  font-size: var(--text-lg); border-radius: 50%; width: 44px; height: 44px;
+}
+.viewer-nav button:disabled { opacity: 0.3; }
+.viewer-meta { color: var(--muted); font-family: var(--font-mono); font-size: var(--text-sm); }
+#viewerClose {
+  position: absolute; top: var(--space-4); right: var(--space-4);
+  background: var(--surface-warm); border: 1px solid var(--border); color: var(--fg);
+  border-radius: 50%; width: 40px; height: 40px; font-size: var(--text-lg);
+}
+
+/* ── photo list (preview tab) ───────────── */
+.photo-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.photo-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
+  padding: var(--space-2) var(--space-3);
+}
+.photo-row .grip { color: var(--meta); cursor: grab; font-size: var(--text-lg); user-select: none; }
+.photo-row img { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; }
+.photo-row .info { flex: 1; min-width: 0; }
+.photo-row .info strong { font-size: var(--text-sm); }
+.photo-row .info small { display: block; color: var(--muted); font-family: var(--font-mono); font-size: var(--text-xs); }
+.photo-row .info em { display: block; color: var(--warn); font-size: var(--text-xs); font-style: normal; margin-top: 2px; }
+.photo-row .mv { background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 50%; width: 30px; height: 30px; flex-shrink: 0; }
+.photo-row .mv:hover { color: var(--x-blue); border-color: var(--x-blue); }
+.photo-row .rm { background: none; border: 1px solid var(--border); color: var(--danger); border-radius: 50%; width: 30px; height: 30px; flex-shrink: 0; }
+.post-input-wrap { position: relative; }
+.post-input {
+  width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 12px; color: var(--fg);
+  padding: var(--space-3); font-size: var(--text-sm); resize: vertical; min-height: 80px;
+}
+.post-input:focus { border-color: var(--x-blue); }
+.char-counter { text-align: right; font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); margin-top: var(--space-1); }
+.char-counter.over { color: var(--danger); font-weight: 700; }
 
 /* ── Output ─────────────────────────────── */
-.out-grid {
-  display: flex; flex-wrap: wrap; gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
+.out-grid { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
 .out-cell {
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: var(--space-2);
-  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
-  background: var(--bg);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: var(--space-2); display: flex; flex-direction: column; align-items: center; gap: var(--space-2); background: var(--bg);
 }
 .out-cell img { width: 120px; height: auto; display: block; border-radius: 4px; }
 .out-cell .fname { font-family: var(--font-mono); font-size: var(--text-xs); color: var(--muted); }
 .out-cell .fsize { font-family: var(--font-mono); font-size: 10px; color: var(--x-blue); }
 .cta-row { display: flex; flex-wrap: wrap; gap: var(--space-3); justify-content: center; }
 .btn-x {
-  background: var(--x-blue);
-  color: #fff;
-  border: none;
-  border-radius: var(--radius-pill);
-  font-weight: 700;
-  font-size: var(--text-base);
-  padding: var(--space-3) var(--space-8);
-  transition: background var(--motion-fast);
-  display: inline-flex; align-items: center; gap: var(--space-2);
+  background: var(--x-blue); color: #fff; border: none; border-radius: var(--radius-pill);
+  font-weight: 700; font-size: var(--text-base); padding: var(--space-3) var(--space-8);
+  transition: background var(--motion-fast); display: inline-flex; align-items: center; gap: var(--space-2);
 }
 .btn-x:hover { background: var(--x-blue-hover); }
 .btn-x:active { background: var(--x-blue-active); }
-.btn-x:disabled { opacity: 0.4; cursor: not-allowed; }
 .btn-ghost {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--fg-2);
-  border-radius: var(--radius-pill);
-  font-size: var(--text-sm);
-  padding: var(--space-2) var(--space-5);
+  background: transparent; border: 1px solid var(--border); color: var(--fg-2);
+  border-radius: var(--radius-pill); font-size: var(--text-sm); padding: var(--space-2) var(--space-5);
   transition: all var(--motion-fast);
 }
 .btn-ghost:hover { border-color: var(--x-blue); color: var(--x-blue); }
 .check-row { display: flex; align-items: center; gap: var(--space-2); justify-content: center; margin-bottom: var(--space-4); }
 .check-row label { font-size: var(--text-sm); color: var(--fg-2); display: flex; align-items: center; gap: 6px; cursor: pointer; }
 .check-row input { accent-color: var(--x-blue); width: 16px; height: 16px; }
-.post-open-hint {
-  text-align: center; color: var(--meta); font-size: var(--text-xs);
-  font-family: var(--font-mono); margin-top: var(--space-3);
-}
+.post-open-hint { text-align: center; color: var(--meta); font-size: var(--text-xs); font-family: var(--font-mono); margin-top: var(--space-3); }
 
-/* ── How to / footer ────────────────────── */
+/* ── Howto / footer ────────────────────── */
 .howto { max-width: 640px; margin: 0 auto; }
 .howto ol { padding-left: 20px; color: var(--fg-2); }
-.howto li { margin-bottom: var(--space-2); }
-.howto code {
-  font-family: var(--font-mono); font-size: var(--text-xs);
-  background: var(--surface-warm); border: 1px var(--border-soft);
-  padding: 1px 6px; border-radius: 4px; color: var(--x-blue);
-}
-.site-footer {
-  border-top: 1px solid var(--border);
-  padding: var(--space-8) 0;
-  margin-top: var(--space-8);
-  text-align: center;
-  color: var(--meta);
-  font-size: var(--text-sm);
-}
+.howto li { margin-bottom: var(--space-2); font-size: var(--text-sm); }
+.howto code { font-family: var(--font-mono); font-size: var(--text-xs); background: var(--surface-warm); padding: 1px 6px; border-radius: 4px; color: var(--x-blue); }
+.site-footer { border-top: 1px solid var(--border); padding: var(--space-8) 0; margin-top: var(--space-8); text-align: center; color: var(--meta); font-size: var(--text-sm); }
 .site-footer .links { margin-top: var(--space-2); display: flex; gap: var(--space-4); justify-content: center; flex-wrap: wrap; }
 .site-footer a { color: var(--muted); text-decoration: none; }
 .site-footer a:hover { color: var(--x-blue); text-decoration: underline; }
 
-/* toast */
 #toast {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
-  background: var(--fg); color: var(--bg);
-  font-size: var(--text-sm); font-weight: 600;
-  padding: var(--space-3) var(--space-5);
-  border-radius: var(--radius-pill);
-  transition: transform 250ms ease;
-  z-index: 999;
-  max-width: 90vw;
+  background: var(--fg); color: var(--bg); font-size: var(--text-sm); font-weight: 600;
+  padding: var(--space-3) var(--space-5); border-radius: var(--radius-pill);
+  transition: transform 250ms ease; z-index: 999; max-width: 90vw;
 }
 #toast.show { transform: translateX(-50%) translateY(0); }
 
 @media (max-width: 600px) {
   .panel { padding: var(--space-4); border-radius: 12px; }
-  .hero { padding-top: var(--space-6); }
   .header-local span.txt { display: none; }
+  .main-tab small { display: none; }
 }
 </style>
 </head>
@@ -544,10 +356,10 @@ button { cursor: pointer; }
 <header class="site-header">
   <div class="container">
     <div class="brand">
-      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <path d="M18.9 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" fill="#ffffff"/>
       </svg>
-      <span class="brand-title">分割くん<span class="accent-blue">.X</span></span>
+      <span class="brand-title">X写真スタジオ</span>
     </div>
     <div class="header-local" title="画像はブラウザ内でのみ処理され、サーバーには一切送信されません">
       <span class="dot"></span><span class="txt">100% LOCAL</span>
@@ -555,21 +367,27 @@ button { cursor: pointer; }
   </div>
 </header>
 
+<div class="main-tabs">
+  <button class="main-tab active" data-tab="split">✂️ 分割<small>大きく見せる</small></button>
+  <button class="main-tab" data-tab="preview">👁 プレビュー<small>投稿前チェック</small></button>
+</div>
+
 <main class="container">
 
+<!-- ══════════════ TAB: 分割 ══════════════ -->
+<div id="tabSplit">
   <section class="hero">
-    <div class="badge">PHOTO → GRID POST</div>
-    <h1>1枚の写真を、分割投稿に。</h1>
-    <p>お手持ちの1枚を、X（Twitter）で大きく見える分割レイアウトに自動トリミング。<br>画像は端末内で処理され、サーバー送信ゼロ。</p>
+    <div class="badge">PHOTO → BIG POST</div>
+    <h1>1枚の写真を、大きく見える投稿に。</h1>
+    <p>写真を分割して、タイムラインで大きく表示される投稿用画像を作ります</p>
   </section>
 
-  <!-- STEP 1: 画像 -->
   <section class="panel" id="step1">
     <div class="step-head">
       <span class="step-num">1</span>
       <div>
         <div class="step-title">写真をドロップ</div>
-        <div class="step-desc">JPEG / PNG / WebP に対応・EXIF回転も自動補正</div>
+        <div class="step-desc">JPEG / PNG / WebP に対応・スマホ写真の向きも自動補正</div>
       </div>
     </div>
     <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="画像を選択">
@@ -580,60 +398,61 @@ button { cursor: pointer; }
     <input type="file" id="fileInput" accept="image/*" hidden>
   </section>
 
-  <!-- STEP 2: レイアウト -->
   <section class="panel" id="step2" style="display:none">
     <div class="step-head">
       <span class="step-num">2</span>
       <div>
-        <div class="step-title">分割レイアウトを選択</div>
-        <div class="step-desc">投稿する枚数と並び方。Xは1度に4枚まで投稿できます</div>
+        <div class="step-title">分割のしかたを選ぶ</div>
+        <div class="step-desc">Xは1度に4枚まで投稿できます（多いほど1枚ずつが小さくなります）</div>
       </div>
     </div>
-    <div class="layout-grid" id="layoutGrid"></div>
-    <div class="layout-custom">
-      <label>カスタム:</label>
-      <input class="num-input" id="customRows" type="number" min="1" max="4" value="1" aria-label="行">
-      <span style="color:var(--muted)">×</span>
-      <input class="num-input" id="customCols" type="number" min="1" max="4" value="4" aria-label="列">
-      <span style="color:var(--muted);font-size:var(--text-sm)">（最大4×4 / 投稿は4枚まで）</span>
+    <div class="opt-row" id="splitMode">
+      <button class="opt-card selected" data-v="carousel">
+        <div class="t">📱 カルーセル分割</div>
+        <div class="d">横長・正方形の写真向き。<b>左から順に4枚</b>に切り分けて、スワイプで繋がる投稿に</div>
+      </button>
+      <button class="opt-card" data-v="rows">
+        <div class="t">📖 段分割</div>
+        <div class="d">縦長の写真向き。<b>上から順に4段</b>に切り分けて、ページをめくるような投稿に</div>
+      </button>
+    </div>
+    <div class="pieces-row" id="pieces">
+      <button class="pill selected" data-v="2">2枚</button>
+      <button class="pill" data-v="3">3枚</button>
+      <button class="pill active selected" data-v="4">4枚（定番）</button>
     </div>
     <div class="auto-note" id="autoNote" style="display:none">
-      画像比率からのおすすめ: <span class="rec" id="recLayout">1×4 縦</span>
+      この写真へのおすすめ: <span class="rec" id="recLayout">カルーセル分割</span>
     </div>
-    <div class="auto-note" id="layoutDim">各セル: —</div>
+    <div class="dim-note" id="layoutDim"></div>
   </section>
 
-  <!-- STEP 3: 詳細設定 -->
   <section class="panel" id="step3" style="display:none">
     <div class="step-head">
       <span class="step-num">3</span>
       <div>
-        <div class="step-title">分割設定</div>
-        <div class="step-desc">デフォルトは元画像の比率をそのまま維持して切り分けます</div>
+        <div class="step-title">切り方のスタイル</div>
+        <div class="step-desc">写真を全部残すか、比率を揃えてきれいに見せるか</div>
       </div>
     </div>
     <div class="settings-grid">
       <div class="setting-block">
-        <span class="set-label">分割モード</span>
-        <div class="seg-group" id="cropMode">
-          <button class="seg selected" data-v="none">元の比率のまま</button>
-          <button class="seg" data-v="4:5">4:5にクロップ</button>
-          <button class="seg" data-v="3:4">3:4にクロップ</button>
-          <button class="seg" data-v="1:1">1:1正方形</button>
-          <button class="seg" data-v="16:9">16:9横長</button>
+        <span class="set-label">スタイル</span>
+        <div class="seg-group" id="styleMode">
+          <button class="seg selected" data-v="full">写真を全部残す</button>
+          <button class="seg" data-v="ratio">比率を揃える</button>
         </div>
-        <div class="gap-visual" id="cropNote">元画像のアスペクト比を維持。各セルは <span id="cellDim">—</span></div>
-      </div>
-      <div class="setting-block" id="offsetBlock">
-        <span class="set-label">クロップ位置（横）</span>
-        <div class="range-row">
-          <input type="range" id="offsetX" min="-50" max="50" value="0">
-          <span class="range-val" id="offsetXVal">0%</span>
-        </div>
-        <span class="set-label" style="margin-top:12px">クロップ位置（縦）</span>
-        <div class="range-row">
-          <input type="range" id="offsetY" min="-50" max="50" value="0">
-          <span class="range-val" id="offsetYVal">0%</span>
+        <div class="gap-visual" id="styleNote">元の写真全体を、等しい幅で切り分けます</div>
+        <div id="ratioPick" style="display:none; margin-top:8px">
+          <div class="seg-group" id="cellRatio">
+            <button class="seg selected" data-v="3:4">3:4（Xで見やすい縦長）</button>
+            <button class="seg" data-v="4:5">4:5（少し横幅広め）</button>
+          </div>
+          <div class="range-row" style="margin-top:12px">
+            <input type="range" id="focusY" min="0" max="100" value="50" disabled>
+            <span class="range-val" id="focusYVal">50%</span>
+          </div>
+          <div class="gap-visual">上下位置: 写真のどの高さを切り出すか（顔などを見せたい位置へ）</div>
         </div>
       </div>
       <div class="setting-block">
@@ -642,7 +461,7 @@ button { cursor: pointer; }
           <input type="range" id="gap" min="0" max="40" value="0">
           <span class="range-val" id="gapVal">0px</span>
         </div>
-        <div class="gap-visual">X表示で画像間に隙間が入る場合、境界をあらかじめ削ります（通常は0でOK）</div>
+        <div class="gap-visual">X表示で画像のつなぎ目がずれる場合だけ調整（通常は0のまま）</div>
       </div>
       <div class="setting-block">
         <span class="set-label">出力フォーマット</span>
@@ -670,13 +489,12 @@ button { cursor: pointer; }
     </div>
   </section>
 
-  <!-- STEP 4: プレビュー -->
   <section class="panel" id="step4" style="display:none">
     <div class="step-head">
       <span class="step-num">4</span>
       <div>
         <div class="step-title">プレビュー</div>
-        <div class="step-desc">Xで実際にどう見えるかをシミュレート</div>
+        <div class="step-desc">Xで実際にどう見えるか（実測クロップ仕様で再現）</div>
       </div>
     </div>
     <div class="tabs">
@@ -685,12 +503,14 @@ button { cursor: pointer; }
       <button class="tab" data-v="flat">元の並び</button>
     </div>
     <div id="timelineWrap">
-      <div class="phone-frame">
+      <div class="phone-frame" id="phoneFrame">
+        <div class="phone-status"><span>9:41</span><span>􀙇</span><span>📶 🔋</span></div>
+        <div class="phone-tabs"><span>おすすめ</span><span class="on">フォロー中</span></div>
         <div class="post-card">
           <div class="post-head">
             <div class="post-avatar">分</div>
             <div class="post-names">
-              <div class="name">分割くんテスター <svg width="14" height="14" viewBox="0 0 24 24" fill="var(--x-blue)" aria-hidden="true"><path d="M22.5 12.5c0-1.5-.1-2.6-.3-3.7h-9.4v7h5.5c-.1 1-.8 2.5-2.4 3.5l-.1.2 3.5 2.7.2.1c2.2-2 3.5-5 3.5-8.8zM9.7 1.5l-.2.2v3.3l.2-.1c2.8-.9 5.5 1 5.8 3.6h4.1c-.1-3.4-2.6-6.2-5.9-7.1-1.4-.4-2.8-.3-4 .1zM2.5 12c0-2 .8-3.9 2.1-5.3L1.1 3.6C.4 5 0 6.6 0 8.4v7.2c0 1.8.4 3.4 1.1 4.8l3.5-3.1C3.3 15.9 2.5 14 2.5 12z" transform="translate(1,2)"/></svg></div>
+              <div class="name">分割くんテスター ✓</div>
               <div class="handle">@split_kun_test · 今</div>
             </div>
           </div>
@@ -698,12 +518,10 @@ button { cursor: pointer; }
           <div class="post-media">
             <div class="carousel" id="previewCarousel"></div>
           </div>
-          <div class="post-actions">
-            <span>💬 0</span><span>🔁 0</span><span>❤️ 0</span><span>📊 0</span>
-          </div>
+          <div class="post-actions"><span>💬 0</span><span>🔁 0</span><span>❤️ 0</span><span>📊 0</span></div>
         </div>
       </div>
-      <div class="post-hint">← スワイプで切替 ／ 縦長セルほどタイムラインで大きく表示されます</div>
+      <div class="post-hint">← スワイプで切替 ／ 縦長セルほど大きく表示されます</div>
     </div>
     <div id="expandedWrap" style="display:none">
       <div class="expand-frame">
@@ -714,13 +532,12 @@ button { cursor: pointer; }
     <div id="flatWrap" style="display:none" class="flat-grid"><div class="frame" id="flatFrame"></div></div>
   </section>
 
-  <!-- STEP 5: 出力 -->
   <section class="panel" id="step5" style="display:none">
     <div class="step-head">
       <span class="step-num">5</span>
       <div>
         <div class="step-title">ダウンロード</div>
-        <div class="step-desc">Xには先頭の画像から順に添付してください</div>
+        <div class="step-desc" id="orderHint">Xには 1 → 2 → 3 → 4 の順（左から）で添付してください</div>
       </div>
     </div>
     <div class="out-grid" id="outGrid"></div>
@@ -730,26 +547,105 @@ button { cursor: pointer; }
     <div class="cta-row">
       <button class="btn-x" id="zipBtn">📦 ZIPで一括DL</button>
       <button class="btn-ghost" id="allBtn">1枚ずつDL</button>
+      <button class="btn-ghost" id="toPreviewBtn">👁 プレビューで確認</button>
       <button class="btn-ghost" id="postBtn">✏️ Xに投稿する画面を開く</button>
     </div>
-    <div class="post-open-hint">ダウンロード後、1 → 2 → 3 → 4 の順で添付すると繋がります</div>
+    <div class="post-open-hint">ダウンロード後、番号の順に添付すると繋がります</div>
   </section>
 
-  <!-- 使い方 -->
   <section class="panel howto">
     <div class="step-head">
       <span class="step-num">?</span>
       <div>
-        <div class="step-title">使い方</div>
-        <div class="step-desc">流行りの「分割投稿」を3ステップで</div>
+        <div class="step-title">大きく見せるコツ</div>
+        <div class="step-desc">なぜ分割すると大きく見えるの？</div>
       </div>
     </div>
     <ol>
-      <li><b>写真をドロップ</b> — 縦長・横長どちらでもOK。自動的におすすめレイアウトを提案します</li>
-      <li><b>レイアウトと比率を選択</b> — <code>1×4</code> で縦スライス（定番）。セルは正方形が一番大きく見えます</li>
-      <li><b>ダウンロードして添付</b> — 出力された画像を <code>1→2→3→4</code> の順でXに添付。タップで縦に繋がる投稿の完成！</li>
+      <li>Xのタイムラインでは、<b>縦長の画像（〜4:5）は高さいっぱいに大きく表示</b>されます</li>
+      <li>横長や正方形の写真を1枚で投稿すると小さくなりがち。<b>縦長セルに分割して4枚投稿</b>すると、各枚が大きく表示されます</li>
+      <li>カルーセル分割なら<code>1→2→3→4</code>をスワイプでなぞると元の写真が復元。<b>漫画やイラスト、衣装紹介に最適</b></li>
+      <li>縦長写真は段分割で4ページに。「上から順に」添付すれば、スクロールで読める投稿になります</li>
     </ol>
   </section>
+</div>
+
+<!-- ══════════════ TAB: プレビュー ══════════════ -->
+<div id="tabPreview" hidden>
+  <section class="hero">
+    <div class="badge">PRE-POST CHECK</div>
+    <h1>投稿する前に、見え方を確認。</h1>
+    <p>写真を並べて、Xでの実際の表示サイズ・見切れ・文字数を事前チェック</p>
+  </section>
+
+  <section class="panel">
+    <div class="step-head">
+      <span class="step-num">1</span>
+      <div>
+        <div class="step-title">写真を選ぶ（最大4枚・縦横混在OK）</div>
+        <div class="step-desc">分割くんで作った画像も、ここで確認できます</div>
+      </div>
+    </div>
+    <div class="dropzone" id="pvDropzone" role="button" tabindex="0" aria-label="画像を選択">
+      <div class="icon">📎</div>
+      <div class="main">ここに画像をドロップ、またはクリックして選択</div>
+      <div class="sub">複数選択OK・順番はあとで並べ替えられます</div>
+    </div>
+    <input type="file" id="pvFiles" accept="image/*" multiple hidden>
+  </section>
+
+  <section class="panel" id="pvListPanel" style="display:none">
+    <div class="step-head">
+      <span class="step-num">2</span>
+      <div>
+        <div class="step-title">並び順と見切れチェック</div>
+        <div class="step-desc">⚠️が付いた写真はタイムラインで一部見切れます（タップすれば全体表示）</div>
+      </div>
+    </div>
+    <div class="photo-list" id="pvList"></div>
+    <div class="auto-note">💡 1枚目の写真の形が、タイムラインでの表示サイズを決めます。縦長の写真を1枚目にすると大きく表示されます</div>
+  </section>
+
+  <section class="panel" id="pvTextPanel" style="display:none">
+    <div class="step-head">
+      <span class="step-num">3</span>
+      <div>
+        <div class="step-title">投稿文（省略可）</div>
+        <div class="step-desc">Xと同じ計算方法で文字数をカウントします</div>
+      </div>
+    </div>
+    <div class="post-input-wrap">
+      <textarea class="post-input" id="pvText" placeholder="投稿文を入力…（URLは23文字、日本語は2文字分としてカウント）"></textarea>
+      <div class="char-counter" id="pvCounter">0 / 280（X換算）</div>
+    </div>
+  </section>
+
+  <section class="panel" id="pvSimPanel" style="display:none">
+    <div class="step-head">
+      <span class="step-num">4</span>
+      <div>
+        <div class="step-title">タイムライン表示シミュレーション</div>
+        <div class="step-desc">画像をタップすると拡大表示（実際の投稿と同じ操作）</div>
+      </div>
+    </div>
+    <div class="phone-frame" id="pvPhone">
+      <div class="phone-status"><span>9:41</span><span>􀙇</span><span>📶 🔋</span></div>
+      <div class="phone-tabs"><span>おすすめ</span><span class="on">フォロー中</span></div>
+      <div class="post-card">
+        <div class="post-head">
+          <div class="post-avatar">分</div>
+          <div class="post-names">
+            <div class="name">あなた ✓</div>
+            <div class="handle">@you · 今</div>
+          </div>
+        </div>
+        <div class="post-text" id="pvPostText">（投稿文なし）</div>
+        <div class="post-media" id="pvMedia"></div>
+        <div class="post-actions"><span>💬 0</span><span>🔁 0</span><span>❤️ 0</span><span>📊 0</span></div>
+      </div>
+    </div>
+  </section>
+</div>
 
 </main>
 
@@ -764,8 +660,19 @@ button { cursor: pointer; }
   </div>
 </footer>
 
+<div id="viewer" hidden>
+  <button id="viewerClose" aria-label="閉じる">✕</button>
+  <img id="viewerImage" alt="拡大表示">
+  <div class="viewer-nav">
+    <button id="viewerPrev" aria-label="前へ">‹</button>
+    <div class="viewer-meta"><span id="viewerCount">1 / 4</span><br><span id="viewerMeta"></span></div>
+    <button id="viewerNext" aria-label="次へ">›</button>
+  </div>
+</div>
+
 <div id="toast" role="status"></div>
 
+<script src="vendor/twitter-text.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

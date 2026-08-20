@@ -1,22 +1,9 @@
 /* ═══════════════════════════════════════════════════════════════
- * X 分割くん — 1枚の写真を任意の分割レイアウトに自動トリミング
+ * X写真スタジオ — 分割 & プレビュー
  * 完全ローカル処理 / サーバー送信ゼロ / 依存ライブラリゼロ
+ * （twitter-textのみ同梱: vendor/twitter-text.js）
  * ═══════════════════════════════════════════════════════════════ */
 'use strict';
-
-/* ── State ─────────────────────────────── */
-const S = {
-  bitmap: null,        // ImageBitmap (EXIF回転済み)
-  fileName: 'image',
-  rows: 1, cols: 4,
-  cropMode: 'none',    // 'none'=元画像比率維持 / 'w:h'=そのセル比へカバークロップ
-  offsetX: 0, offsetY: 0, // -50..50 (%)
-  gap: 0,              // px (元画像スケール)
-  format: 'png',
-  quality: 0.92,
-  outWidth: 'orig',    // 'orig' or number
-  results: [],         // [{blob, name, w, h, url}]
-};
 
 const $ = (id) => document.getElementById(id);
 
@@ -30,10 +17,70 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 
-/* ── STEP 1: 画像読み込み ──────────────── */
+/* ═══════════════════════════════════════════════════════════════
+ * X表示仕様モジュール（iruagaru実測ベース — 全ツール共通）
+ * ═══════════════════════════════════════════════════════════════ */
+const XSpec = {
+  /* 枚数ごとのタイムライン全表示範囲 (w/h) */
+  limits(count) {
+    if (count <= 1) return { min: 0, max: Infinity };   // 1枚: 元比率維持
+    if (count === 2) return { min: 0.5, max: 1.5 };     // 2枚: 横並び2分割
+    return { min: 0.56, max: 1.18 };                     // 3〜4枚: カルーセル
+  },
+  /* クランプ後の表示比率 */
+  displayAR(w, h, count) {
+    const ar = w / h;
+    const { min, max } = this.limits(count);
+    return Math.min(Math.max(ar, min), max);
+  },
+  /* 見切れ% (sideCrop: 左右%, verticalCrop: 上下%) — 複数枚のみ */
+  cropPct(w, h, count) {
+    if (count <= 1) return { side: 0, vertical: 0 };
+    const { min, max } = this.limits(count);
+    const ar = w / h;
+    return {
+      side: ar > max ? Math.round((1 - max / ar) * 50) : 0,
+      vertical: ar < min ? Math.round((1 - ar / min) * 50) : 0,
+    };
+  },
+};
+
+/* ═══════════════════════════════════════════════════════════════
+ * タブ切替
+ * ═══════════════════════════════════════════════════════════════ */
+document.querySelectorAll('.main-tab').forEach(t => {
+  t.addEventListener('click', () => {
+    document.querySelectorAll('.main-tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    const v = t.dataset.tab;
+    $('tabSplit').hidden = (v !== 'split');
+    $('tabPreview').hidden = (v !== 'preview');
+    window.scrollTo({ top: 0 });
+    if (v === 'preview') PV.render();
+  });
+});
+
+/* ═══════════════════════════════════════════════════════════════
+ * 分割ツール
+ * ═══════════════════════════════════════════════════════════════ */
+const S = {
+  bitmap: null,
+  fileName: 'image',
+  mode: 'carousel',   // 'carousel'=左からN枚 / 'rows'=上からN段
+  pieces: 4,          // 2/3/4
+  style: 'full',      // 'full'=全部残す / 'ratio'=比率を揃える
+  ratio: [3, 4],      // 3:4 or 4:5 (ratioモード)
+  focusY: 50,         // 0-100 上下位置 (ratioモード)
+  gap: 0,
+  format: 'png',
+  quality: 0.92,
+  outWidth: 'orig',
+  results: [],
+};
+
+/* ── STEP1: 画像読み込み ───────────────── */
 const dz = $('dropzone');
 const fi = $('fileInput');
-
 dz.addEventListener('click', () => fi.click());
 dz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') fi.click(); });
 dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('dragover'); });
@@ -49,7 +96,6 @@ async function loadImage(file) {
   if (!file.type.startsWith('image/')) { toast('画像ファイルを選んでね'); return; }
   try {
     const buf = await file.arrayBuffer();
-    // imageOrientation: 'from-image' → EXIF回転を自動適用
     S.bitmap = await createImageBitmap(new Blob([buf]), { imageOrientation: 'from-image' });
     S.fileName = file.name.replace(/\.[^.]+$/, '');
     dz.classList.add('loaded');
@@ -63,7 +109,7 @@ async function loadImage(file) {
         </div>
       </div>`;
     $('changeImg').addEventListener('click', (e) => { e.stopPropagation(); fi.click(); });
-    autoLayout();
+    autoMode();
     show('step2'); show('step3');
     toast('画像を読み込みました！');
     render();
@@ -73,63 +119,38 @@ async function loadImage(file) {
   }
 }
 
-/* ── STEP 2: レイアウト ────────────────── */
-const PRESETS = [
-  { label: '1×2', r: 1, c: 2 }, { label: '1×3', r: 1, c: 3 }, { label: '1×4 左→右4枚', r: 1, c: 4 },
-  { label: '2×1', r: 2, c: 1 }, { label: '3×1', r: 3, c: 1 }, { label: '4×1 縦4段', r: 4, c: 1 },
-  { label: '2×2', r: 2, c: 2 }, { label: '1×1', r: 1, c: 1 },
-];
-const grid = $('layoutGrid');
-PRESETS.forEach(p => {
-  const b = document.createElement('button');
-  b.className = 'layout-opt';
-  b.dataset.r = p.r; b.dataset.c = p.c;
-  let cells = '';
-  for (let i = 0; i < p.r * p.c; i++) cells += '<span></span>';
-  b.innerHTML = `<div class="cells" style="grid-template-columns:repeat(${p.c},1fr);grid-template-rows:repeat(${p.r},1fr)">${cells}</div><div class="label">${p.label}</div>`;
-  b.addEventListener('click', () => { setLayout(p.r, p.c); });
-  grid.appendChild(b);
-});
-// 1×4 を初期選択
-selectPreset(1, 4);
-
-function selectPreset(r, c) {
-  document.querySelectorAll('.layout-opt').forEach(el => {
-    el.classList.toggle('selected', +el.dataset.r === r && +el.dataset.c === c);
+/* ── STEP2: モード・枚数 ───────────────── */
+document.querySelectorAll('#splitMode .opt-card').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#splitMode .opt-card').forEach(x => x.classList.remove('selected'));
+    b.classList.add('selected');
+    S.mode = b.dataset.v;
+    render();
   });
-  $('customRows').value = r; $('customCols').value = c;
-}
-function setLayout(r, c) {
-  r = Math.min(4, Math.max(1, r | 0));
-  c = Math.min(4, Math.max(1, c | 0));
-  S.rows = r; S.cols = c;
-  selectPreset(r, c);
-  render();
-}
-$('customRows').addEventListener('input', () => setLayout(+$('customRows').value, S.cols));
-$('customCols').addEventListener('input', () => setLayout(S.rows, +$('customCols').value));
+});
+document.querySelectorAll('#pieces .pill').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#pieces .pill').forEach(x => x.classList.remove('selected'));
+    b.classList.add('selected');
+    S.pieces = +b.dataset.v;
+    render();
+  });
+});
 
-// 画像比率からおすすめレイアウト（流行りの分割方式）
-function autoLayout() {
+function autoMode() {
   if (!S.bitmap) return;
   const ar = S.bitmap.width / S.bitmap.height;
-  let rec, label;
-  if (ar < 0.8) {
-    // 縦長画像 → 縦4段（各セルが正方形〜縦長になり、4ページに分けて読める）
-    rec = [4, 1]; label = '4×1 縦4段（縦長画像を4ページに）';
-  } else {
-    // 正方形〜横長画像 → 左から右へ4枚（各セルが縦長になり、タイムラインで大きく表示）
-    rec = [1, 4]; label = '1×4 左→右4枚（タイムラインで大きく）';
-  }
+  const tall = ar < 0.8;
+  S.mode = tall ? 'rows' : 'carousel';
+  document.querySelectorAll('#splitMode .opt-card').forEach(x => {
+    x.classList.toggle('selected', x.dataset.v === S.mode);
+  });
   const note = $('autoNote');
   note.style.display = 'block';
-  const [r, c] = rec;
-  $('recLayout').textContent = label;
-  $('recLayout').onclick = () => { setLayout(r, c); toast(`おすすめ ${r}×${c} を適用！`); };
-  setLayout(r, c); // 自動適用（変更可能）
+  $('recLayout').textContent = tall ? '段分割（縦長の写真だから）' : 'カルーセル分割（横長〜正方形の写真だから）';
 }
 
-/* ── STEP 3: 設定 ──────────────────────── */
+/* ── STEP3: スタイル・設定 ─────────────── */
 function bindSeg(id, cb) {
   const el = $(id);
   el.addEventListener('click', (e) => {
@@ -141,13 +162,16 @@ function bindSeg(id, cb) {
     render();
   });
 }
-bindSeg('cropMode', v => {
-  S.cropMode = v;
-  // クロップモード時のみ位置調整が有効
-  const off = $('offsetBlock');
-  off.style.opacity = (v === 'none') ? '0.4' : '1';
-  off.querySelectorAll('input').forEach(i => i.disabled = (v === 'none'));
+bindSeg('styleMode', v => {
+  S.style = v;
+  const isRatio = (v === 'ratio');
+  $('ratioPick').style.display = isRatio ? '' : 'none';
+  $('focusY').disabled = !isRatio;
+  $('styleNote').textContent = isRatio
+    ? '各セルの比率を3:4/4:5に揃えて、きれいなカルーセルにします'
+    : '元の写真全体を、等しい幅で切り分けます';
 });
+bindSeg('cellRatio', v => { S.ratio = v.split(':').map(Number); });
 bindSeg('format', v => {
   S.format = v;
   $('qualityWrap').style.display = (v === 'png') ? 'none' : 'block';
@@ -162,31 +186,36 @@ function bindRange(id, valId, cb, fmt) {
     render();
   });
 }
-bindRange('offsetX', 'offsetXVal', v => S.offsetX = v, v => v + '%');
-bindRange('offsetY', 'offsetYVal', v => S.offsetY = v, v => v + '%');
+bindRange('focusY', 'focusYVal', v => S.focusY = v, v => v + '%');
 bindRange('gap', 'gapVal', v => S.gap = v, v => v + 'px');
 bindRange('quality', 'qualityVal', v => S.quality = v / 100, v => v + '%');
 
-/* ── 分割計算（コア） ────────────────────
- * デフォルト: 元画像のアスペクト比を維持したまま行列で等分（COLLAGE方式）
- * cropMode指定時のみ、全体を指定セル比×行列のキャンバス比へカバークロップ
- */
+/* ── 分割計算（コア） ──────────────────── */
 function calcCells() {
   const bmp = S.bitmap;
-  const rows = S.rows, cols = S.cols;
+  const n = S.pieces;
+  const horizontal = S.mode === 'carousel'; // 左から = 横並び
 
   let srcX = 0, srcY = 0, srcW = bmp.width, srcH = bmp.height;
+  let cols, rows;
 
-  if (S.cropMode !== 'none') {
-    const [rw, rh] = S.cropMode.split(':').map(Number);
-    const canvasAR = (rw * cols) / (rh * rows);
+  if (S.style === 'ratio') {
+    // 比率を揃える: 全体を (セル比×N横並び) のキャンバス比へカバークロップ
+    const [rw, rh] = S.ratio;
+    const canvasAR = (rw * n) / rh;  // 高さ1に対し幅 rw*n
     const imgAR = bmp.width / bmp.height;
-    if (imgAR > canvasAR) { srcH = bmp.height; srcW = srcH * canvasAR; }
-    else { srcW = bmp.width; srcH = srcW / canvasAR; }
-    const maxOffX = bmp.width - srcW;
-    const maxOffY = bmp.height - srcH;
-    srcX = maxOffX > 0 ? maxOffX * (0.5 + S.offsetX / 100) : 0;
-    srcY = maxOffY > 0 ? maxOffY * (0.5 + S.offsetY / 100) : 0;
+    if (imgAR > canvasAR) {
+      srcH = bmp.height; srcW = srcH * canvasAR;
+      srcX = (bmp.width - srcW) * 0.5; // 左右は中央
+    } else {
+      srcW = bmp.width; srcH = srcW / canvasAR;
+      srcY = Math.max(0, (bmp.height - srcH)) * (S.focusY / 100); // 上下位置
+    }
+    cols = n; rows = 1; // 比率を揃えるのは常に横並びカルーセル
+  } else {
+    // 全部残す: 元画像全体を等分
+    cols = horizontal ? n : 1;
+    rows = horizontal ? 1 : n;
   }
 
   const cellSrcW = srcW / cols, cellSrcH = srcH / rows;
@@ -194,7 +223,7 @@ function calcCells() {
   const outH = Math.round(outW * cellSrcH / cellSrcW);
 
   const cells = [];
-  const g = Math.min(S.gap, (Math.min(cellSrcW, cellSrcH) / 2) - 1); // 安全上限
+  const g = Math.min(S.gap, (Math.min(cellSrcW, cellSrcH) / 2) - 1);
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const cutL = c > 0 ? g / 2 : 0;
@@ -213,26 +242,6 @@ function calcCells() {
   return cells;
 }
 
-/* Xタイムラインの表示クロップ仕様シミュレーション
- * 横長は16:9上限、縦長は4:5下限。範囲外はタイムラインで一部クロップ（タップで全体） */
-function xDisplayAR(w, h) {
-  const ar = w / h;
-  const WIDE = 16 / 9, TALL = 4 / 5;
-  if (ar > WIDE) return WIDE;
-  if (ar < TALL) return TALL;
-  return ar;
-}
-function ratioLabel(w, h) {
-  const ar = w / h;
-  const presets = [[16,9],[4,5],[3,4],[2,3],[1,1],[1,2],[1,3],[1,4],[3,2],[4,3],[9,16],[2,1],[3,1],[4,1]];
-  let best = null, bestDiff = Infinity;
-  for (const [a, b] of presets) {
-    const d = Math.abs(ar - a / b);
-    if (d < bestDiff) { bestDiff = d; best = a + ':' + b; }
-  }
-  return bestDiff < 0.02 ? best : ar.toFixed(2) + ':1';
-}
-
 function drawCell(cell, targetW) {
   const cv = document.createElement('canvas');
   cv.width = targetW || cell.outW;
@@ -246,65 +255,79 @@ function drawCell(cell, targetW) {
 
 const MIME = { png: 'image/png', jpeg: 'image/jpeg', webp: 'image/webp' };
 const EXT = { png: 'png', jpeg: 'jpg', webp: 'webp' };
-
 function canvasToBlob(cv) {
   return new Promise(res => cv.toBlob(res, MIME[S.format], S.quality));
+}
+function ratioLabel(w, h) {
+  const ar = w / h;
+  const presets = [[16,9],[4,5],[3,4],[2,3],[1,1],[1,2],[1,3],[1,4],[3,2],[4,3],[9,16],[2,1],[3,1],[4,1]];
+  let best = null, bestDiff = Infinity;
+  for (const [a, b] of presets) {
+    const d = Math.abs(ar - a / b);
+    if (d < bestDiff) { bestDiff = d; best = a + ':' + b; }
+  }
+  return bestDiff < 0.02 ? best : ar.toFixed(2) + ':1';
 }
 
 /* ── レンダリング ──────────────────────── */
 let renderTimer = null;
+let rendering = false;
 function render() {
   if (!S.bitmap) return;
   clearTimeout(renderTimer);
-  renderTimer = setTimeout(renderNow, 120); // デバウンス
+  renderTimer = setTimeout(async () => {
+    if (rendering) { render(); return; } // 実行中なら再スケジュール（並走防止）
+    rendering = true;
+    try { await renderNow(); } finally { rendering = false; }
+  }, 120);
 }
 
 async function renderNow() {
   const cells = calcCells();
-  const n = cells.length;
-  if (n > 4) {
-    toast(`⚠️ ${n}枚生成 — Xへの投稿は1度に4枚までです`);
-  }
 
-  // 古いblob URLを解放（メモリリーク防止）
+  // 古いblob URL解放
   S.results.forEach(r => URL.revokeObjectURL(r.url));
 
-  // 本番出力を先に生成
-  S.results = [];
-  for (let i = 0; i < cells.length; i++) {
-    const cv = drawCell(cells[i]);
+  // 並列生成（直列だとtoBlobエンコードが直列で遅い）
+  S.results = await Promise.all(cells.map(async (cell) => {
+    const cv = drawCell(cell);
     const blob = await canvasToBlob(cv);
-    const name = `${S.fileName}_split_${String(cells[i].idx).padStart(2, '0')}.${EXT[S.format]}`;
-    S.results.push({ blob, name, w: cells[i].outW, h: cells[i].outH, url: URL.createObjectURL(blob) });
-  }
+    const name = `${S.fileName}_${String(cell.idx).padStart(2, '0')}.${EXT[S.format]}`;
+    return { blob, name, w: cell.outW, h: cell.outH, url: URL.createObjectURL(blob) };
+  }));
 
-  // ── セル情報表示（STEP2/3） ──
+  // STEP2 寸法情報
   const c0 = cells[0];
-  const cellAr = c0.outW / c0.outH;
-  const dispAr = xDisplayAR(c0.outW, c0.outH);
-  const sizeNote = cellAr < 0.8 ? '縦長 — タイムラインで大きく表示されます'
-    : cellAr > 1.2 ? '横長 — タイムラインでは小さめに表示されます'
+  const count = S.results.length;
+  const c0ar = c0.outW / c0.outH;
+  const disp = XSpec.displayAR(c0.outW, c0.outH, count);
+  const sizeNote = c0ar < 0.9 ? 'タイムラインで大きく表示されます'
+    : c0ar > 1.3 ? 'タイムラインでは小さめ・横に短く表示されます'
     : 'タイムラインで中くらいの大きさで表示されます';
-  const dim = $('cellDim');
-  if (dim) dim.innerHTML = `<b style="color:var(--x-blue)">${c0.outW}×${c0.outH}（${ratioLabel(c0.outW, c0.outH)}）</b><br>${sizeNote}`;
-  const dim2 = $('layoutDim');
-  if (dim2) dim2.innerHTML = `各セル: <b style="color:var(--x-blue)">${c0.outW}×${c0.outH}</b>（${ratioLabel(c0.outW, c0.outH)}）— ${sizeNote}`;
+  $('layoutDim').innerHTML =
+    `各セル: <b>${c0.outW}×${c0.outH}（${ratioLabel(c0.outW, c0.outH)}）</b><br>${sizeNote}` +
+    (Math.abs(disp - c0ar) > 0.01 ? `<br>⚠️ この比率はタイムラインで一部見切れます（${ratioLabel(Math.round(disp * c0.outH), c0.outH)}相当で表示）` : '');
+  $('orderHint').textContent = S.mode === 'carousel'
+    ? `Xには 1 → ${'…'} → ${count} の順（左から）で添付してください`
+    : `Xには 1 → ${'…'} → ${count} の順（上から）で添付してください`;
 
-  // ── タイムラインプレビュー（Xクロップ仕様再現） ──
+  // タイムラインプレビュー（実測仕様）
   const car = $('previewCarousel');
   car.innerHTML = '';
-  const raw = car.parentElement ? car.parentElement.clientWidth - 2 : 0;
-  const cw = raw > 0 ? raw : 340; // 非表示時のフォールバック
+  const media = car.closest('.post-media');
+  const raw = media ? media.clientWidth - 2 : 0;
+  const cw = raw > 0 ? raw : 340;
+  const dispH = Math.round(cw / XSpec.displayAR(c0.outW, c0.outH, count));
   S.results.forEach((r, i) => {
-    const disp = xDisplayAR(r.w, r.h);
-    const cropped = Math.abs(disp - r.w / r.h) > 0.01;
-    const wrap = document.createElement('div');
+    const cAr = r.w / r.h;
+    const dAr = XSpec.displayAR(r.w, r.h, count);
+    const cropped = Math.abs(dAr - cAr) > 0.01;
+    const wrap = document.createElement('button');
     wrap.className = 'cell';
     wrap.style.width = cw + 'px';
-    wrap.style.height = Math.round(cw / disp) + 'px';
+    wrap.style.height = dispH + 'px';
     const img = document.createElement('img');
-    img.src = r.url;
-    img.alt = `セル${i + 1}`;
+    img.src = r.url; img.alt = `セル${i + 1}`;
     wrap.appendChild(img);
     const idx = document.createElement('span');
     idx.className = 'idx'; idx.textContent = (i + 1);
@@ -314,32 +337,27 @@ async function renderNow() {
       tag.className = 'cropped'; tag.textContent = '一部クロップ';
       wrap.appendChild(tag);
     }
+    wrap.addEventListener('click', () => Viewer.open(S.results, i, count));
     car.appendChild(wrap);
   });
 
   // ページングドット
-  const media = car.closest('.post-media');
   let dots = media.querySelector('.timeline-dots');
-  if (!dots) {
-    dots = document.createElement('div');
-    dots.className = 'timeline-dots';
-    media.appendChild(dots);
-  }
+  if (!dots) { dots = document.createElement('div'); dots.className = 'timeline-dots'; media.appendChild(dots); }
   dots.innerHTML = S.results.map((_, i) => `<span class="${i === 0 ? 'on' : ''}"></span>`).join('');
   car.onscroll = () => {
     const i = Math.round(car.scrollLeft / (cw + 2));
     dots.querySelectorAll('span').forEach((s, j) => s.classList.toggle('on', j === i));
   };
 
-  // ── 拡大（タップ後）プレビュー: 縦に繋がる見え方 ──
+  // 拡大プレビュー
   const stack = $('expandedStack');
   stack.innerHTML = '';
   S.results.forEach((r, i) => {
     const wrap = document.createElement('div');
     wrap.className = 'exp';
     const img = document.createElement('img');
-    img.src = r.url;
-    img.alt = `拡大${i + 1}`;
+    img.src = r.url; img.alt = `拡大${i + 1}`;
     wrap.appendChild(img);
     const idx = document.createElement('span');
     idx.className = 'idx'; idx.textContent = (i + 1);
@@ -347,15 +365,14 @@ async function renderNow() {
     stack.appendChild(wrap);
   });
 
-  // ── 元の並びプレビュー ──
+  // 元の並び
   const frame = $('flatFrame');
   frame.innerHTML = '';
-  frame.style.gridTemplateColumns = `repeat(${S.cols}, max-content)`;
-  const fw = S.cols > 1 ? Math.max(80, Math.floor(520 / S.cols)) : 360;
+  frame.style.gridTemplateColumns = `repeat(${cells.length > 1 && S.mode === 'carousel' ? cells.length : 1}, max-content)`;
+  const fw = S.mode === 'carousel' ? Math.max(80, Math.floor(520 / cells.length)) : 360;
   S.results.forEach((r, i) => {
     const img = document.createElement('img');
-    img.src = r.url;
-    img.alt = `元の位置${i + 1}`;
+    img.src = r.url; img.alt = `元の位置${i + 1}`;
     img.style.width = fw + 'px';
     img.style.display = 'block';
     frame.appendChild(img);
@@ -381,16 +398,16 @@ async function renderNow() {
 
 function show(id) { $(id).style.display = ''; }
 
-/* ── タブ ──────────────────────────────── */
-document.querySelectorAll('.tab').forEach(t => {
+/* ── 分割タブ内プレビュータブ ──────────── */
+document.querySelectorAll('#step4 .tab').forEach(t => {
   t.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+    document.querySelectorAll('#step4 .tab').forEach(x => x.classList.remove('active'));
     t.classList.add('active');
     const v = t.dataset.v;
     $('timelineWrap').style.display = (v === 'timeline') ? '' : 'none';
     $('expandedWrap').style.display = (v === 'expanded') ? '' : 'none';
     $('flatWrap').style.display = (v === 'flat') ? '' : 'none';
-    if (v === 'timeline') render(); // 幅再計算のため再描画
+    if (v === 'timeline') render();
   });
 });
 
@@ -400,17 +417,264 @@ function download(r) {
   a.href = r.url; a.download = r.name;
   document.body.appendChild(a); a.click(); a.remove();
 }
-
 $('allBtn').addEventListener('click', async () => {
   const order = $('reverseDl').checked ? [...S.results].reverse() : S.results;
   for (const r of order) { download(r); await sleep(500); }
   toast('ダウンロード開始！');
 });
-
 $('postBtn').addEventListener('click', () => {
   window.open('https://x.com/compose/post', '_blank', 'noopener');
 });
+$('toPreviewBtn').addEventListener('click', () => {
+  // 分割結果をプレビュータブへ（blob URL共有）
+  PV.loadFromResults(S.results);
+  document.querySelector('.main-tab[data-tab="preview"]').click();
+  toast('分割結果をプレビューに渡しました！');
+});
 
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+/* ═══════════════════════════════════════════════════════════════
+ * ビューア（タップ後の拡大表示 — 両タブ共通）
+ * ═══════════════════════════════════════════════════════════════ */
+const Viewer = {
+  items: [], active: 0,
+  open(items, i, count) {
+    this.items = items;
+    this.active = i;
+    this.count = count || items.length;
+    $('viewer').hidden = false;
+    this.show();
+  },
+  show() {
+    const it = this.items[this.active];
+    $('viewerImage').src = it.url;
+    $('viewerCount').textContent = `${this.active + 1} / ${this.items.length}`;
+    const img = $('viewerImage');
+    img.onload = () => {
+      $('viewerMeta').textContent = `${img.naturalWidth} × ${img.naturalHeight} · ${(img.naturalWidth / img.naturalHeight).toFixed(2)}:1`;
+    };
+    $('viewerPrev').disabled = this.active === 0;
+    $('viewerNext').disabled = this.active === this.items.length - 1;
+  },
+};
+$('viewerClose').onclick = () => { $('viewer').hidden = true; };
+$('viewerPrev').onclick = () => { if (Viewer.active > 0) { Viewer.active--; Viewer.show(); } };
+$('viewerNext').onclick = () => { if (Viewer.active < Viewer.items.length - 1) { Viewer.active++; Viewer.show(); } };
+document.addEventListener('keydown', (e) => {
+  if ($('viewer').hidden) return;
+  if (e.key === 'Escape') $('viewer').hidden = true;
+  if (e.key === 'ArrowLeft' && Viewer.active > 0) { Viewer.active--; Viewer.show(); }
+  if (e.key === 'ArrowRight' && Viewer.active < Viewer.items.length - 1) { Viewer.active++; Viewer.show(); }
+});
+
+/* ═══════════════════════════════════════════════════════════════
+ * プレビューツール
+ * ═══════════════════════════════════════════════════════════════ */
+const PV = {
+  photos: [],   // {id, name, url, w, h, size}
+  textExpanded: false,
+
+  async loadFiles(fileList) {
+    const files = [...fileList].filter(f => f.type.startsWith('image/')).slice(0, 4);
+    if (!files.length) { toast('画像ファイルを選んでね'); return; }
+    this.photos.forEach(p => URL.revokeObjectURL(p.url));
+    this.photos = await Promise.all(files.map(f => new Promise((res, rej) => {
+      const url = URL.createObjectURL(f);
+      const img = new Image();
+      img.onload = () => res({ id: crypto.randomUUID(), name: f.name, url, w: img.naturalWidth, h: img.naturalHeight, size: f.size });
+      img.onerror = rej;
+      img.src = url;
+    })));
+    this.render();
+    if (files.length) toast(`${files.length}枚を読み込みました`);
+  },
+
+  loadFromResults(results) {
+    // 分割くんの結果をそのまま（url共有・revokeしない）
+    this.photos = results.map((r, i) => ({
+      id: 'split-' + i, name: r.name, url: r.url, w: r.w, h: r.h, size: r.blob.size,
+    }));
+    this.render();
+  },
+
+  move(i, dir) {
+    const j = i + dir;
+    if (j < 0 || j >= this.photos.length) return;
+    const m = this.photos.splice(i, 1)[0];
+    this.photos.splice(j, 0, m);
+    this.render();
+  },
+  removeAt(i) {
+    this.photos.splice(i, 1);
+    this.render();
+  },
+
+  render() {
+    const has = this.photos.length > 0;
+    $('pvListPanel').style.display = has ? '' : 'none';
+    $('pvTextPanel').style.display = has ? '' : 'none';
+    $('pvSimPanel').style.display = has ? '' : 'none';
+    if (!has) return;
+
+    // 写真リスト
+    const list = $('pvList');
+    list.innerHTML = '';
+    const count = this.photos.length;
+    this.photos.forEach((p, i) => {
+      const ar = p.w / p.h;
+      const { side, vertical } = XSpec.cropPct(p.w, p.h, count);
+      const note = side ? `⚠️ 左右 約${side}%ずつ見切れます` : vertical ? `⚠️ 上下 約${vertical}%ずつ見切れます` : '✅ 全体が表示されます';
+      const row = document.createElement('div');
+      row.className = 'photo-row';
+      row.innerHTML = `
+        <span class="grip" title="ドラッグで並べ替え">⠿</span>
+        <img src="${p.url}" alt="${p.name}">
+        <div class="info">
+          <strong>${i + 1}枚目${i === 0 ? '（表示サイズを決める）' : ''}</strong>
+          <small>${p.w} × ${p.h} · ${(p.size / 1048576).toFixed(1)}MB · ${ratioLabel(p.w, p.h)}</small>
+          <em style="color:${side || vertical ? 'var(--warn)' : 'var(--success)'}">${note}</em>
+        </div>
+        <button class="mv" data-i="${i}" data-d="-1" title="前へ" ${i === 0 ? 'disabled' : ''}>↑</button>
+        <button class="mv" data-i="${i}" data-d="1" title="次へ" ${i === this.photos.length - 1 ? 'disabled' : ''}>↓</button>
+        <button class="rm" data-i="${i}" title="削除">✕</button>`;
+      row.querySelectorAll('.mv').forEach(b => b.addEventListener('click', () => this.move(i, +b.dataset.d)));
+      row.querySelector('.rm').addEventListener('click', () => this.removeAt(i));
+      list.appendChild(row);
+    });
+
+    // 投稿文（iruagaru互換: 公式twitter-text）
+    this.renderText();
+    // タイムラインシミュ
+    this.renderTimeline();
+  },
+
+  renderText() {
+    const TT = (window.TwitterText && (window.TwitterText.default || window.TwitterText)) || null;
+    const text = $('pvText').value.normalize('NFC');
+    const out = $('pvPostText');
+    const counter = $('pvCounter');
+    if (!TT) {
+      out.textContent = text || '（投稿文なし）';
+      counter.textContent = `${text.length} / 280（簡易カウント）`;
+      return;
+    }
+    const parsed = TT.parseTweet(text);
+    const weight = parsed.weightedLength;
+    const isLong = weight > 280;
+    if (isLong && !this.textExpanded) {
+      const collapsed = text.slice(0, parsed.validRangeEnd + 1).trimEnd();
+      out.textContent = collapsed;
+      const btn = document.createElement('button');
+      btn.className = 'text-toggle';
+      btn.textContent = '… さらに表示';
+      btn.onclick = () => { this.textExpanded = true; this.renderText(); };
+      out.append(' ', btn);
+    } else {
+      out.textContent = text || '（投稿文なし）';
+      if (isLong) {
+        const btn = document.createElement('button');
+        btn.className = 'text-toggle';
+        btn.textContent = '表示を減らす';
+        btn.onclick = () => { this.textExpanded = false; this.renderText(); };
+        out.append(' ', btn);
+      }
+    }
+    counter.textContent = `${weight.toLocaleString()} / 280（X換算）${isLong ? ' · 長文ポスト' : ''}`;
+    counter.classList.toggle('over', isLong);
+  },
+
+  renderTimeline() {
+    const media = $('pvMedia');
+    media.innerHTML = '';
+    const count = this.photos.length;
+    if (!count) return;
+
+    const W = media.clientWidth - 2 || 340; // 1カード幅
+
+    if (count === 1) {
+      // 1枚: 元比率そのまま（高さは素直に、フレーム側で見やすく）
+      const p = this.photos[0];
+      const d = document.createElement('button');
+      d.className = 'cell';
+      const h = Math.round(W / (p.w / p.h));
+      d.style.cssText = `width:${W}px;height:${h}px;position:relative;overflow:hidden;border-radius:4px;`;
+      d.innerHTML = `<img src="${p.url}" style="width:100%;height:100%;object-fit:cover;" alt="${p.name}">`;
+      d.onclick = () => Viewer.open(this.photos, 0, 1);
+      media.appendChild(d);
+      return;
+    }
+
+    if (count === 2) {
+      // 2枚: 横並び2分割（各0.5〜1.5クランプ、高さは比率合計から）
+      const cl = this.photos.map(p => XSpec.displayAR(p.w, p.h, 2));
+      const sum = cl[0] + cl[1];
+      const h = Math.round((W - 2) / sum);
+      const grid = document.createElement('div');
+      grid.className = 'two-grid';
+      grid.style.gridTemplateColumns = `${cl[0] / sum}fr ${cl[1] / sum}fr`;
+      grid.style.height = h + 'px';
+      this.photos.forEach((p, i) => {
+        const cell = document.createElement('button');
+        cell.className = 'cell';
+        const raw = p.w / p.h;
+        const note = Math.abs(raw - cl[i]) > 0.01 ? '<span class="idx">⚠️クロップ</span>' : '';
+        cell.innerHTML = `<img src="${p.url}" style="width:100%;height:100%;object-fit:cover;" alt="${p.name}">${note}`;
+        cell.onclick = () => Viewer.open(this.photos, i, 2);
+        grid.appendChild(cell);
+      });
+      media.appendChild(grid);
+      return;
+    }
+
+    // 3〜4枚: カルーセル（高さは1枚目のクランプ比）
+    const first = this.photos[0];
+    const firstAr = XSpec.displayAR(first.w, first.h, count);
+    const cw = Math.min(W, 340);
+    const h = Math.round(cw / firstAr);
+    const car = document.createElement('div');
+    car.className = 'carousel';
+    const dots = document.createElement('div');
+    dots.className = 'timeline-dots';
+    dots.innerHTML = this.photos.map((_, i) => `<span class="${i === 0 ? 'on' : ''}"></span>`).join('');
+    this.photos.forEach((p, i) => {
+      const raw = p.w / p.h;
+      const dAr = XSpec.displayAR(p.w, p.h, count);
+      const wrap = document.createElement('button');
+      wrap.className = 'cell';
+      wrap.style.cssText = `width:${cw}px;height:${h}px;`;
+      wrap.innerHTML = `<img src="${p.url}" style="width:100%;height:100%;object-fit:cover;" alt="${p.name}">
+        <span class="idx">${i + 1}</span>${Math.abs(raw - dAr) > 0.01 ? '<span class="cropped">一部クロップ</span>' : ''}`;
+      wrap.onclick = () => Viewer.open(this.photos, i, count);
+      car.appendChild(wrap);
+    });
+    car.onscroll = () => {
+      const i = Math.round(car.scrollLeft / (cw + 2));
+      dots.querySelectorAll('span').forEach((s, j) => s.classList.toggle('on', j === i));
+    };
+    media.appendChild(car);
+    media.appendChild(dots);
+  },
+};
+
+/* ── プレビュー: イベント ──────────────── */
+const pvDz = $('pvDropzone');
+const pvFiles = $('pvFiles');
+pvDz.addEventListener('click', () => pvFiles.click());
+pvDz.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') pvFiles.click(); });
+pvDz.addEventListener('dragover', (e) => { e.preventDefault(); pvDz.classList.add('dragover'); });
+pvDz.addEventListener('dragleave', () => pvDz.classList.remove('dragover'));
+pvDz.addEventListener('drop', (e) => {
+  e.preventDefault(); pvDz.classList.remove('dragover');
+  if (e.dataTransfer.files.length) PV.loadFiles(e.dataTransfer.files);
+});
+pvFiles.addEventListener('change', () => { if (pvFiles.files.length) PV.loadFiles(pvFiles.files); pvFiles.value = ''; });
+$('pvText').addEventListener('input', () => { PV.textExpanded = false; PV.renderText(); });
+window.addEventListener('resize', () => { if (!$('tabPreview').hidden) PV.renderTimeline(); if (S.results.length) render(); });
+
+/* ═══════════════════════════════════════════════════════════════
+ * ZIP (STORE / 無圧縮) — 依存ライブラリゼロの自前実装
+ * ═══════════════════════════════════════════════════════════════ */
 $('zipBtn').addEventListener('click', async () => {
   if (!S.results.length) return;
   try {
@@ -424,44 +688,29 @@ $('zipBtn').addEventListener('click', async () => {
   } catch (e) { console.error(e); toast('ZIP生成に失敗…'); }
 });
 
-// 初期状態: cropMode=none → 位置調整無効
-$('offsetBlock').style.opacity = '0.4';
-$('offsetBlock').querySelectorAll('input').forEach(i => i.disabled = true);
-
-const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-/* ═══════════════════════════════════════════════════════════════
- * ZIP (STORE / 無圧縮) — 依存ライブラリゼロの自前実装
- * 画像は既に圧縮済みなので再圧縮せずそのまま格納する
- * ═══════════════════════════════════════════════════════════════ */
 async function buildZip(files) {
   const enc = new TextEncoder();
   const chunks = [];
   const central = [];
   let offset = 0;
-
   for (const f of files) {
     const data = new Uint8Array(await f.data.arrayBuffer());
     const nameB = enc.encode(f.name);
     const crc = crc32(data);
     const now = dosTime(new Date());
-
-    // Local File Header
     const lfh = new DataView(new ArrayBuffer(30));
     lfh.setUint32(0, 0x04034b50, true);
-    lfh.setUint16(4, 20, true);        // version needed
-    lfh.setUint16(6, 0x0800, true);    // UTF-8 filename flag
-    lfh.setUint16(8, 0, true);         // method: store
+    lfh.setUint16(4, 20, true);
+    lfh.setUint16(6, 0x0800, true);
+    lfh.setUint16(8, 0, true);
     lfh.setUint16(10, now.time, true);
     lfh.setUint16(12, now.date, true);
     lfh.setUint32(14, crc, true);
-    lfh.setUint32(18, data.length, true);   // compressed
-    lfh.setUint32(22, data.length, true);   // uncompressed
+    lfh.setUint32(18, data.length, true);
+    lfh.setUint32(22, data.length, true);
     lfh.setUint16(26, nameB.length, true);
     lfh.setUint16(28, 0, true);
     chunks.push(new Uint8Array(lfh.buffer), nameB, data);
-
-    // Central Directory entry
     const cd = new DataView(new ArrayBuffer(46));
     cd.setUint32(0, 0x02014b50, true);
     cd.setUint16(4, 20, true);
@@ -474,14 +723,10 @@ async function buildZip(files) {
     cd.setUint32(20, data.length, true);
     cd.setUint32(24, data.length, true);
     cd.setUint16(28, nameB.length, true);
-    // 30..41 extra/comment/disk/attrs = 0
     cd.setUint32(42, offset, true);
     central.push(new Uint8Array(cd.buffer), nameB);
-
     offset += 30 + nameB.length + data.length;
   }
-
-  // End of Central Directory
   const cdSize = central.reduce((a, c) => a + c.length, 0);
   const eocd = new DataView(new ArrayBuffer(22));
   eocd.setUint32(0, 0x06054b50, true);
@@ -489,7 +734,6 @@ async function buildZip(files) {
   eocd.setUint16(10, files.length, true);
   eocd.setUint32(12, cdSize, true);
   eocd.setUint32(16, offset, true);
-
   return new Blob([...chunks, ...central, new Uint8Array(eocd.buffer)], { type: 'application/zip' });
 }
 
