@@ -9,14 +9,13 @@ const S = {
   bitmap: null,        // ImageBitmap (EXIF回転済み)
   fileName: 'image',
   rows: 1, cols: 4,
-  cellRatio: [1, 1],   // w:h
+  cropMode: 'none',    // 'none'=元画像比率維持 / 'w:h'=そのセル比へカバークロップ
   offsetX: 0, offsetY: 0, // -50..50 (%)
-  gap: 12,             // px (元画像スケール)
+  gap: 0,              // px (元画像スケール)
   format: 'png',
   quality: 0.92,
-  outWidth: 1080,      // 'orig' or number
-  results: [],         // [{blob, name, w, h, dataUrl(preview)}]
-  previewMode: 'carousel',
+  outWidth: 'orig',    // 'orig' or number
+  results: [],         // [{blob, name, w, h, url}]
 };
 
 const $ = (id) => document.getElementById(id);
@@ -76,8 +75,8 @@ async function loadImage(file) {
 
 /* ── STEP 2: レイアウト ────────────────── */
 const PRESETS = [
-  { label: '1×2', r: 1, c: 2 }, { label: '1×3', r: 1, c: 3 }, { label: '1×4 縦', r: 1, c: 4 },
-  { label: '2×1', r: 2, c: 1 }, { label: '3×1', r: 3, c: 1 }, { label: '4×1 横', r: 4, c: 1 },
+  { label: '1×2', r: 1, c: 2 }, { label: '1×3', r: 1, c: 3 }, { label: '1×4 左→右4枚', r: 1, c: 4 },
+  { label: '2×1', r: 2, c: 1 }, { label: '3×1', r: 3, c: 1 }, { label: '4×1 縦4段', r: 4, c: 1 },
   { label: '2×2', r: 2, c: 2 }, { label: '1×1', r: 1, c: 1 },
 ];
 const grid = $('layoutGrid');
@@ -110,19 +109,22 @@ function setLayout(r, c) {
 $('customRows').addEventListener('input', () => setLayout(+$('customRows').value, S.cols));
 $('customCols').addEventListener('input', () => setLayout(S.rows, +$('customCols').value));
 
-// 画像比率からおすすめレイアウト
+// 画像比率からおすすめレイアウト（流行りの分割方式）
 function autoLayout() {
   if (!S.bitmap) return;
   const ar = S.bitmap.width / S.bitmap.height;
-  let rec;
-  if (ar < 0.75) rec = [1, 4];        // 縦長 → 縦4スライス（流行り）
-  else if (ar > 2.2) rec = [4, 1];    // 超横長 → 横4
-  else if (ar > 1.1) rec = [2, 2];    // 横長 → 2×2
-  else rec = [1, 4];                  // 正方形寄り → 縦4
+  let rec, label;
+  if (ar < 0.8) {
+    // 縦長画像 → 縦4段（各セルが正方形〜縦長になり、4ページに分けて読める）
+    rec = [4, 1]; label = '4×1 縦4段（縦長画像を4ページに）';
+  } else {
+    // 正方形〜横長画像 → 左から右へ4枚（各セルが縦長になり、タイムラインで大きく表示）
+    rec = [1, 4]; label = '1×4 左→右4枚（タイムラインで大きく）';
+  }
   const note = $('autoNote');
   note.style.display = 'block';
   const [r, c] = rec;
-  $('recLayout').textContent = `${r}×${c} ${r === 1 && c > 1 ? '縦' : r > 1 && c === 1 ? '横' : 'グリッド'}`;
+  $('recLayout').textContent = label;
   $('recLayout').onclick = () => { setLayout(r, c); toast(`おすすめ ${r}×${c} を適用！`); };
   setLayout(r, c); // 自動適用（変更可能）
 }
@@ -139,7 +141,13 @@ function bindSeg(id, cb) {
     render();
   });
 }
-bindSeg('cellRatio', v => { S.cellRatio = v.split(':').map(Number); });
+bindSeg('cropMode', v => {
+  S.cropMode = v;
+  // クロップモード時のみ位置調整が有効
+  const off = $('offsetBlock');
+  off.style.opacity = (v === 'none') ? '0.4' : '1';
+  off.querySelectorAll('input').forEach(i => i.disabled = (v === 'none'));
+});
 bindSeg('format', v => {
   S.format = v;
   $('qualityWrap').style.display = (v === 'png') ? 'none' : 'block';
@@ -159,30 +167,31 @@ bindRange('offsetY', 'offsetYVal', v => S.offsetY = v, v => v + '%');
 bindRange('gap', 'gapVal', v => S.gap = v, v => v + 'px');
 bindRange('quality', 'qualityVal', v => S.quality = v / 100, v => v + '%');
 
-/* ── 分割計算（コア） ──────────────────── */
+/* ── 分割計算（コア） ────────────────────
+ * デフォルト: 元画像のアスペクト比を維持したまま行列で等分（COLLAGE方式）
+ * cropMode指定時のみ、全体を指定セル比×行列のキャンバス比へカバークロップ
+ */
 function calcCells() {
   const bmp = S.bitmap;
-  const [rw, rh] = S.cellRatio;
   const rows = S.rows, cols = S.cols;
 
-  // 仮想キャンバス比（セル比 × 行列数）
-  const canvasAR = (rw * cols) / (rh * rows);
-  const imgAR = bmp.width / bmp.height;
+  let srcX = 0, srcY = 0, srcW = bmp.width, srcH = bmp.height;
 
-  // カバークロップ: ソース矩形
-  let srcW, srcH;
-  if (imgAR > canvasAR) { srcH = bmp.height; srcW = srcH * canvasAR; }
-  else { srcW = bmp.width; srcH = srcW / canvasAR; }
+  if (S.cropMode !== 'none') {
+    const [rw, rh] = S.cropMode.split(':').map(Number);
+    const canvasAR = (rw * cols) / (rh * rows);
+    const imgAR = bmp.width / bmp.height;
+    if (imgAR > canvasAR) { srcH = bmp.height; srcW = srcH * canvasAR; }
+    else { srcW = bmp.width; srcH = srcW / canvasAR; }
+    const maxOffX = bmp.width - srcW;
+    const maxOffY = bmp.height - srcH;
+    srcX = maxOffX > 0 ? maxOffX * (0.5 + S.offsetX / 100) : 0;
+    srcY = maxOffY > 0 ? maxOffY * (0.5 + S.offsetY / 100) : 0;
+  }
 
-  const maxOffX = bmp.width - srcW;
-  const maxOffY = bmp.height - srcH;
-  const srcX = maxOffX > 0 ? maxOffX * (0.5 + S.offsetX / 100) : 0;
-  const srcY = maxOffY > 0 ? maxOffY * (0.5 + S.offsetY / 100) : 0;
-
-  // 出力セルサイズ
   const cellSrcW = srcW / cols, cellSrcH = srcH / rows;
-  let outW = S.outWidth === 'orig' ? Math.round(cellSrcW) : S.outWidth;
-  const outH = Math.round(outW * rh / rw);
+  const outW = S.outWidth === 'orig' ? Math.round(cellSrcW) : S.outWidth;
+  const outH = Math.round(outW * cellSrcH / cellSrcW);
 
   const cells = [];
   const g = Math.min(S.gap, (Math.min(cellSrcW, cellSrcH) / 2) - 1); // 安全上限
@@ -202,6 +211,26 @@ function calcCells() {
     }
   }
   return cells;
+}
+
+/* Xタイムラインの表示クロップ仕様シミュレーション
+ * 横長は16:9上限、縦長は4:5下限。範囲外はタイムラインで一部クロップ（タップで全体） */
+function xDisplayAR(w, h) {
+  const ar = w / h;
+  const WIDE = 16 / 9, TALL = 4 / 5;
+  if (ar > WIDE) return WIDE;
+  if (ar < TALL) return TALL;
+  return ar;
+}
+function ratioLabel(w, h) {
+  const ar = w / h;
+  const presets = [[16,9],[4,5],[3,4],[2,3],[1,1],[1,2],[1,3],[1,4],[3,2],[4,3],[9,16],[2,1],[3,1],[4,1]];
+  let best = null, bestDiff = Infinity;
+  for (const [a, b] of presets) {
+    const d = Math.abs(ar - a / b);
+    if (d < bestDiff) { bestDiff = d; best = a + ':' + b; }
+  }
+  return bestDiff < 0.02 ? best : ar.toFixed(2) + ':1';
 }
 
 function drawCell(cell, targetW) {
@@ -240,7 +269,7 @@ async function renderNow() {
   // 古いblob URLを解放（メモリリーク防止）
   S.results.forEach(r => URL.revokeObjectURL(r.url));
 
-  // 本番出力を先に生成（プレビューもこのblob URLを使う＝DL内容と完全一致）
+  // 本番出力を先に生成
   S.results = [];
   for (let i = 0; i < cells.length; i++) {
     const cv = drawCell(cells[i]);
@@ -249,32 +278,80 @@ async function renderNow() {
     S.results.push({ blob, name, w: cells[i].outW, h: cells[i].outH, url: URL.createObjectURL(blob) });
   }
 
-  // カルーセルプレビュー（blob URLのimg — 複数箇所から参照OK）
+  // ── セル情報表示（STEP2/3） ──
+  const c0 = cells[0];
+  const cellAr = c0.outW / c0.outH;
+  const dispAr = xDisplayAR(c0.outW, c0.outH);
+  const sizeNote = cellAr < 0.8 ? '縦長 — タイムラインで大きく表示されます'
+    : cellAr > 1.2 ? '横長 — タイムラインでは小さめに表示されます'
+    : 'タイムラインで中くらいの大きさで表示されます';
+  const dim = $('cellDim');
+  if (dim) dim.innerHTML = `<b style="color:var(--x-blue)">${c0.outW}×${c0.outH}（${ratioLabel(c0.outW, c0.outH)}）</b><br>${sizeNote}`;
+  const dim2 = $('layoutDim');
+  if (dim2) dim2.innerHTML = `各セル: <b style="color:var(--x-blue)">${c0.outW}×${c0.outH}</b>（${ratioLabel(c0.outW, c0.outH)}）— ${sizeNote}`;
+
+  // ── タイムラインプレビュー（Xクロップ仕様再現） ──
   const car = $('previewCarousel');
   car.innerHTML = '';
   const raw = car.parentElement ? car.parentElement.clientWidth - 2 : 0;
-  const cw = raw > 0 ? Math.min(360, raw) : 360; // 非表示時のフォールバック
-  const cellH = Math.round(cw * cells[0].outH / cells[0].outW);
+  const cw = raw > 0 ? raw : 340; // 非表示時のフォールバック
   S.results.forEach((r, i) => {
+    const disp = xDisplayAR(r.w, r.h);
+    const cropped = Math.abs(disp - r.w / r.h) > 0.01;
     const wrap = document.createElement('div');
     wrap.className = 'cell';
+    wrap.style.width = cw + 'px';
+    wrap.style.height = Math.round(cw / disp) + 'px';
     const img = document.createElement('img');
     img.src = r.url;
     img.alt = `セル${i + 1}`;
-    img.style.width = cw + 'px';
-    img.style.height = cellH + 'px';
     wrap.appendChild(img);
     const idx = document.createElement('span');
     idx.className = 'idx'; idx.textContent = (i + 1);
     wrap.appendChild(idx);
+    if (cropped) {
+      const tag = document.createElement('span');
+      tag.className = 'cropped'; tag.textContent = '一部クロップ';
+      wrap.appendChild(tag);
+    }
     car.appendChild(wrap);
   });
 
-  // flatプレビュー（隙間なく並べた見え方 — 独立したimg要素）
+  // ページングドット
+  const media = car.closest('.post-media');
+  let dots = media.querySelector('.timeline-dots');
+  if (!dots) {
+    dots = document.createElement('div');
+    dots.className = 'timeline-dots';
+    media.appendChild(dots);
+  }
+  dots.innerHTML = S.results.map((_, i) => `<span class="${i === 0 ? 'on' : ''}"></span>`).join('');
+  car.onscroll = () => {
+    const i = Math.round(car.scrollLeft / (cw + 2));
+    dots.querySelectorAll('span').forEach((s, j) => s.classList.toggle('on', j === i));
+  };
+
+  // ── 拡大（タップ後）プレビュー: 縦に繋がる見え方 ──
+  const stack = $('expandedStack');
+  stack.innerHTML = '';
+  S.results.forEach((r, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'exp';
+    const img = document.createElement('img');
+    img.src = r.url;
+    img.alt = `拡大${i + 1}`;
+    wrap.appendChild(img);
+    const idx = document.createElement('span');
+    idx.className = 'idx'; idx.textContent = (i + 1);
+    wrap.appendChild(idx);
+    stack.appendChild(wrap);
+  });
+
+  // ── 元の並びプレビュー ──
   const frame = $('flatFrame');
   frame.innerHTML = '';
   frame.style.gridTemplateColumns = `repeat(${S.cols}, max-content)`;
-  const fw = S.cols > 1 ? Math.max(90, Math.floor(560 / S.cols)) : 360;
+  const fw = S.cols > 1 ? Math.max(80, Math.floor(520 / S.cols)) : 360;
   S.results.forEach((r, i) => {
     const img = document.createElement('img');
     img.src = r.url;
@@ -293,7 +370,7 @@ async function renderNow() {
     d.innerHTML = `
       <img src="${r.url}" alt="${r.name}">
       <div class="fname">${r.name}</div>
-      <div class="fsize">${r.w}×${r.h} / ${(r.blob.size / 1024).toFixed(0)} KB</div>
+      <div class="fsize">${r.w}×${r.h}（${ratioLabel(r.w, r.h)}）/ ${(r.blob.size / 1024).toFixed(0)} KB</div>
       <button class="btn-ghost" style="padding:4px 14px;font-size:12px" data-i="${i}">DL</button>`;
     d.querySelector('button').addEventListener('click', () => download(r));
     og.appendChild(d);
@@ -309,11 +386,11 @@ document.querySelectorAll('.tab').forEach(t => {
   t.addEventListener('click', () => {
     document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
     t.classList.add('active');
-    S.previewMode = t.dataset.v;
-    const carousel = t.dataset.v === 'carousel';
-    $('previewCarousel').parentElement.parentElement.style.display = carousel ? '' : 'none';
-    document.querySelector('.post-hint').style.display = carousel ? '' : 'none';
-    $('flatWrap').style.display = carousel ? 'none' : '';
+    const v = t.dataset.v;
+    $('timelineWrap').style.display = (v === 'timeline') ? '' : 'none';
+    $('expandedWrap').style.display = (v === 'expanded') ? '' : 'none';
+    $('flatWrap').style.display = (v === 'flat') ? '' : 'none';
+    if (v === 'timeline') render(); // 幅再計算のため再描画
   });
 });
 
@@ -346,6 +423,10 @@ $('zipBtn').addEventListener('click', async () => {
     toast('ZIPをダウンロードしました！');
   } catch (e) { console.error(e); toast('ZIP生成に失敗…'); }
 });
+
+// 初期状態: cropMode=none → 位置調整無効
+$('offsetBlock').style.opacity = '0.4';
+$('offsetBlock').querySelectorAll('input').forEach(i => i.disabled = true);
 
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
