@@ -236,36 +236,11 @@ async function renderNow() {
   if (n > 4) {
     toast(`⚠️ ${n}枚生成 — Xへの投稿は1度に4枚までです`);
   }
-  // プレビュー用（軽量）+ 本番用を生成
-  const previewCv = [];
-  for (const cell of cells) previewCv.push(drawCell(cell, 360));
 
-  // カルーセルプレビュー
-  const car = $('previewCarousel');
-  car.innerHTML = '';
-  const cw = Math.min(360, Math.floor(car.parentElement.clientWidth - 2) || 360);
-  previewCv.forEach((cv, i) => {
-    const cellH = Math.round(cw * cells[0].outH / cells[0].outW);
-    cv.style.width = cw + 'px'; cv.style.height = cellH + 'px'; cv.style.objectFit = 'cover';
-    const wrap = document.createElement('div');
-    wrap.className = 'cell';
-    wrap.appendChild(cv);
-    const idx = document.createElement('span');
-    idx.className = 'idx'; idx.textContent = (i + 1);
-    wrap.appendChild(idx);
-    car.appendChild(wrap);
-  });
+  // 古いblob URLを解放（メモリリーク防止）
+  S.results.forEach(r => URL.revokeObjectURL(r.url));
 
-  // flatプレビュー（隙間なく並べた見え方）
-  const frame = $('flatFrame');
-  frame.innerHTML = '';
-  frame.style.gridTemplateColumns = `repeat(${S.cols}, ${cw / (S.cols > 1 ? 2 : 1)}px)`;
-  previewCv.forEach(cv => {
-    cv.style.width = '100%';
-    frame.appendChild(cv);
-  });
-
-  // 本番出力
+  // 本番出力を先に生成（プレビューもこのblob URLを使う＝DL内容と完全一致）
   S.results = [];
   for (let i = 0; i < cells.length; i++) {
     const cv = drawCell(cells[i]);
@@ -273,6 +248,41 @@ async function renderNow() {
     const name = `${S.fileName}_split_${String(cells[i].idx).padStart(2, '0')}.${EXT[S.format]}`;
     S.results.push({ blob, name, w: cells[i].outW, h: cells[i].outH, url: URL.createObjectURL(blob) });
   }
+
+  // カルーセルプレビュー（blob URLのimg — 複数箇所から参照OK）
+  const car = $('previewCarousel');
+  car.innerHTML = '';
+  const raw = car.parentElement ? car.parentElement.clientWidth - 2 : 0;
+  const cw = raw > 0 ? Math.min(360, raw) : 360; // 非表示時のフォールバック
+  const cellH = Math.round(cw * cells[0].outH / cells[0].outW);
+  S.results.forEach((r, i) => {
+    const wrap = document.createElement('div');
+    wrap.className = 'cell';
+    const img = document.createElement('img');
+    img.src = r.url;
+    img.alt = `セル${i + 1}`;
+    img.style.width = cw + 'px';
+    img.style.height = cellH + 'px';
+    wrap.appendChild(img);
+    const idx = document.createElement('span');
+    idx.className = 'idx'; idx.textContent = (i + 1);
+    wrap.appendChild(idx);
+    car.appendChild(wrap);
+  });
+
+  // flatプレビュー（隙間なく並べた見え方 — 独立したimg要素）
+  const frame = $('flatFrame');
+  frame.innerHTML = '';
+  frame.style.gridTemplateColumns = `repeat(${S.cols}, max-content)`;
+  const fw = S.cols > 1 ? Math.max(90, Math.floor(560 / S.cols)) : 360;
+  S.results.forEach((r, i) => {
+    const img = document.createElement('img');
+    img.src = r.url;
+    img.alt = `元の位置${i + 1}`;
+    img.style.width = fw + 'px';
+    img.style.display = 'block';
+    frame.appendChild(img);
+  });
 
   // 出力グリッド
   const og = $('outGrid');
