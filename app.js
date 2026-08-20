@@ -200,18 +200,34 @@ function calcCells() {
   let cols, rows;
 
   if (S.style === 'ratio') {
-    // 比率を揃える: 全体を (セル比×N横並び) のキャンバス比へカバークロップ
     const [rw, rh] = S.ratio;
-    const canvasAR = (rw * n) / rh;  // 高さ1に対し幅 rw*n
-    const imgAR = bmp.width / bmp.height;
-    if (imgAR > canvasAR) {
-      srcH = bmp.height; srcW = srcH * canvasAR;
-      srcX = (bmp.width - srcW) * 0.5; // 左右は中央
+    if (S.mode === 'rows') {
+      // 縦積みn段: 全体カンバス比 rw : rh×n（超縦長）
+      const canvasAR = rw / (rh * n);
+      const imgAR = bmp.width / bmp.height;
+      if (imgAR > canvasAR) {
+        // 元写真の方が横長 → 左右をクロップ
+        srcH = bmp.height; srcW = srcH * canvasAR;
+        srcX = (bmp.width - srcW) * (S.focusY / 100);
+      } else {
+        // 元写真の方が縦長 → 上下をクロップ
+        srcW = bmp.width; srcH = srcW / canvasAR;
+        srcY = (bmp.height - srcH) * (S.focusY / 100);
+      }
+      cols = 1; rows = n;
     } else {
-      srcW = bmp.width; srcH = srcW / canvasAR;
-      srcY = Math.max(0, (bmp.height - srcH)) * (S.focusY / 100); // 上下位置
+      // 横並びn枚: 全体カンバス比 rw×n : rh
+      const canvasAR = (rw * n) / rh;
+      const imgAR = bmp.width / bmp.height;
+      if (imgAR > canvasAR) {
+        srcH = bmp.height; srcW = srcH * canvasAR;
+        srcX = (bmp.width - srcW) * 0.5; // 左右は中央
+      } else {
+        srcW = bmp.width; srcH = srcW / canvasAR;
+        srcY = Math.max(0, (bmp.height - srcH)) * (S.focusY / 100); // 上下位置
+      }
+      cols = n; rows = 1;
     }
-    cols = n; rows = 1; // 比率を揃えるのは常に横並びカルーセル
   } else {
     // 全部残す: 元画像全体を等分
     cols = horizontal ? n : 1;
@@ -272,8 +288,24 @@ function ratioLabel(w, h) {
 /* ── レンダリング ──────────────────────── */
 let renderTimer = null;
 let rendering = false;
+function ratioCropDir() {
+  // ratioモードでどっちを切るか ('v'=上下, 'h'=左右)
+  if (!S.bitmap || S.style !== 'ratio') return 'v';
+  const [rw, rh] = S.ratio;
+  const n = S.pieces;
+  const canvasAR = S.mode === 'rows' ? rw / (rh * n) : (rw * n) / rh;
+  return (S.bitmap.width / S.bitmap.height) > canvasAR ? 'h' : 'v';
+}
+function updateFocusLabel() {
+  const el = $('focusLabel');
+  if (!el) return;
+  el.textContent = ratioCropDir() === 'h'
+    ? '左右位置: 写真のどの幅を見せるか（被写体がある位置へ）'
+    : '上下位置: 写真のどの高さを切り出すか（顔などを見せたい位置へ）';
+}
 function render() {
   if (!S.bitmap) return;
+  updateFocusLabel();
   clearTimeout(renderTimer);
   renderTimer = setTimeout(async () => {
     if (rendering) { render(); return; } // 実行中なら再スケジュール（並走防止）
