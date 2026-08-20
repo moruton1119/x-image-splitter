@@ -137,17 +137,40 @@ document.querySelectorAll('#pieces .pill').forEach(b => {
   });
 });
 
+function setStyleUI(v) {
+  S.style = v;
+  document.querySelectorAll('#styleMode .seg').forEach(s => s.classList.toggle('selected', s.dataset.v === v));
+  $('ratioPick').style.display = (v === 'ratio') ? '' : 'none';
+  $('focusY').disabled = (v !== 'ratio');
+  $('styleNote').textContent = (v === 'ratio')
+    ? '各セルの比率を3:4/4:5に揃えて、きれいなカルーセルにします'
+    : '元の写真全体を、等しい幅で切り分けます';
+}
 function autoMode() {
   if (!S.bitmap) return;
   const ar = S.bitmap.width / S.bitmap.height;
-  const tall = ar < 0.8;
-  S.mode = tall ? 'rows' : 'carousel';
+  let mode, style, why;
+  if (ar < 0.56) {
+    // 超縦長（1:2〜）: 段分割×全部残す → 各セルがほどよい縦長〜正方形
+    mode = 'rows'; style = 'full';
+    why = '段分割・全部残す（超縦長の写真だから、等分だけでセルが大きくなります）';
+  } else if (ar < 1.0) {
+    // 縦長（3:4・9:16など）: 段分割×比率揃え3:4 → 縦積み縦長セルで高さ1.8×
+    mode = 'rows'; style = 'ratio';
+    why = '段分割・比率を揃える（縦長の写真を縦長セルで大きく見せます）';
+  } else {
+    // 正方形・横長: カルーセル分割×全部残す → 左からスライスで縦長セル
+    mode = 'carousel'; style = 'full';
+    why = 'カルーセル分割・全部残す（正方形〜横長の写真だから、左から切るとセルが縦長になります）';
+  }
+  S.mode = mode;
   document.querySelectorAll('#splitMode .opt-card').forEach(x => {
     x.classList.toggle('selected', x.dataset.v === S.mode);
   });
+  setStyleUI(style);
   const note = $('autoNote');
   note.style.display = 'block';
-  $('recLayout').textContent = tall ? '段分割（縦長の写真だから）' : 'カルーセル分割（横長〜正方形の写真だから）';
+  $('recLayout').textContent = why;
 }
 
 /* ── STEP3: スタイル・設定 ─────────────── */
@@ -426,21 +449,6 @@ async function renderNow() {
       `1枚目の比率で全体の高さが決まります · スワイプ／矢印で切替 · 画像タップで拡大`;
   }
 
-  // 拡大プレビュー
-  const stack = $('expandedStack');
-  stack.innerHTML = '';
-  S.results.forEach((r, i) => {
-    const wrap = document.createElement('div');
-    wrap.className = 'exp';
-    const img = document.createElement('img');
-    img.src = r.url; img.alt = `拡大${i + 1}`;
-    wrap.appendChild(img);
-    const idx = document.createElement('span');
-    idx.className = 'idx'; idx.textContent = (i + 1);
-    wrap.appendChild(idx);
-    stack.appendChild(wrap);
-  });
-
   // 元の並び
   const frame = $('flatFrame');
   frame.innerHTML = '';
@@ -474,18 +482,6 @@ async function renderNow() {
 
 function show(id) { $(id).style.display = ''; }
 
-/* ── 分割タブ内プレビュータブ ──────────── */
-document.querySelectorAll('#step4 .tab').forEach(t => {
-  t.addEventListener('click', () => {
-    document.querySelectorAll('#step4 .tab').forEach(x => x.classList.remove('active'));
-    t.classList.add('active');
-    const v = t.dataset.v;
-    $('timelineWrap').style.display = (v === 'timeline') ? '' : 'none';
-    $('expandedWrap').style.display = (v === 'expanded') ? '' : 'none';
-    $('flatWrap').style.display = (v === 'flat') ? '' : 'none';
-    if (v === 'timeline') render();
-  });
-});
 
 /* ── ダウンロード ──────────────────────── */
 function download(r) {
