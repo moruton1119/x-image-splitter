@@ -235,6 +235,32 @@ button { cursor: pointer; }
 .timeline-dots { display: flex; justify-content: center; gap: 6px; padding: var(--space-2) 0; }
 .timeline-dots span { width: 6px; height: 6px; border-radius: 50%; background: rgba(255,255,255,0.3); }
 .timeline-dots span.on { background: var(--x-blue); }
+/* ── タイムライン視覚化（見切れ帯・カウンター・矢印・サイズ比較） ── */
+.crop-band { position: absolute; left: 0; right: 0; height: 34px; display: flex; align-items: center; background: linear-gradient(to bottom, rgba(0,0,0,0.82), rgba(0,0,0,0.5)); pointer-events: none; z-index: 2; }
+.crop-band span { width: 100%; text-align: center; font-size: 11px; color: #ffd75e; font-weight: 700; letter-spacing: 0.03em; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+.cb-top { top: 0; border-bottom: 1.5px dashed rgba(255,215,94,0.9); }
+.cb-bottom { bottom: 0; border-top: 1.5px dashed rgba(255,215,94,0.9); background: linear-gradient(to top, rgba(0,0,0,0.82), rgba(0,0,0,0.5)); }
+.crop-band.cb-left, .crop-band.cb-right { left: 0; right: auto; top: 0; bottom: 0; width: 30px; height: auto; }
+.crop-band.cb-left span, .crop-band.cb-right span { writing-mode: vertical-rl; text-orientation: mixed; margin: auto; font-size: 10px; }
+.cb-left { border-right: 1.5px dashed rgba(255,215,94,0.9); background: linear-gradient(to right, rgba(0,0,0,0.82), rgba(0,0,0,0.5)); }
+.cb-right { left: auto; right: 0; border-left: 1.5px dashed rgba(255,215,94,0.9); background: linear-gradient(to left, rgba(0,0,0,0.82), rgba(0,0,0,0.5)); }
+.page-counter { position: absolute; top: 8px; right: 8px; z-index: 3; background: rgba(0,0,0,0.78); color: #fff; font-family: var(--font-mono); font-size: 11px; padding: 2px 9px; border-radius: var(--radius-pill); pointer-events: none; }
+.nav-arrow { position: absolute; top: 50%; transform: translateY(-50%); z-index: 3; width: 30px; height: 46px; border: none; background: rgba(0,0,0,0.6); color: #fff; font-size: 22px; line-height: 1; cursor: pointer; border-radius: 8px; opacity: 0.6; transition: opacity .15s; display: flex; align-items: center; justify-content: center; }
+.nav-arrow:hover { opacity: 1; }
+.nav-arrow.prev { left: 6px; }
+.nav-arrow.next { right: 6px; }
+.size-compare { margin-top: var(--space-3); padding: var(--space-3) var(--space-4); background: rgba(128,128,128,0.07); border: 1px solid var(--border-soft); border-radius: 12px; }
+.sc-title { font-size: 11px; font-weight: 700; color: var(--muted); margin-bottom: var(--space-2); letter-spacing: 0.04em; }
+.sc-row { display: grid; grid-template-columns: 96px 1fr 42px; gap: 10px; align-items: center; margin: 6px 0; font-size: 12px; color: var(--fg-2); }
+.sc-label { white-space: nowrap; }
+.sc-label-now { color: var(--x-blue); font-weight: 700; }
+.sc-track { height: 14px; background: rgba(128,128,128,0.16); border-radius: 7px; overflow: hidden; }
+.sc-bar { height: 100%; border-radius: 7px; transition: width .3s; }
+.sc-base { background: rgba(150,150,150,0.55); }
+.sc-now { background: linear-gradient(90deg, #1d9bf0, #62c8ff); }
+.sc-val { text-align: right; font-family: var(--font-mono); font-weight: 700; }
+.sc-now-val { color: var(--x-blue); }
+.sc-note { margin-top: 8px; font-size: 11px; color: var(--meta); text-align: center; font-family: var(--font-mono); }
 .post-actions { display: flex; justify-content: space-around; padding: var(--space-2) var(--space-4) var(--space-3); color: var(--muted); border-top: 1px solid var(--border-soft); }
 .post-actions span { font-size: var(--text-xs); }
 .post-hint { text-align: center; color: var(--meta); font-size: var(--text-xs); margin-top: var(--space-3); font-family: var(--font-mono); }
@@ -521,7 +547,20 @@ button { cursor: pointer; }
           <div class="post-actions"><span>💬 0</span><span>🔁 0</span><span>❤️ 0</span><span>📊 0</span></div>
         </div>
       </div>
-      <div class="post-hint">← スワイプで切替 ／ 縦長セルほど大きく表示されます</div>
+      <div class="size-compare" id="sizeCompare">
+        <div class="sc-title">タイムラインでの表示サイズ比較</div>
+        <div class="sc-row">
+          <span class="sc-label">■ 1:1 の投稿</span>
+          <div class="sc-track"><div class="sc-bar sc-base"></div></div>
+          <span class="sc-val">1.0×</span>
+        </div>
+        <div class="sc-row">
+          <span class="sc-label sc-label-now">▶ 今回の投稿</span>
+          <div class="sc-track"><div class="sc-bar sc-now"></div></div>
+          <span class="sc-val sc-now-val">1.0×</span>
+        </div>
+        <div class="sc-note"></div>
+      </div>
     </div>
     <div id="expandedWrap" style="display:none">
       <div class="expand-frame">

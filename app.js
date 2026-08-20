@@ -300,28 +300,30 @@ async function renderNow() {
   const c0 = cells[0];
   const count = S.results.length;
   const c0ar = c0.outW / c0.outH;
-  const disp = XSpec.displayAR(c0.outW, c0.outH, count);
-  const sizeNote = c0ar < 0.9 ? 'タイムラインで大きく表示されます'
-    : c0ar > 1.3 ? 'タイムラインでは小さめ・横に短く表示されます'
-    : 'タイムラインで中くらいの大きさで表示されます';
+  const dAr0 = XSpec.displayAR(c0.outW, c0.outH, count);
+  const mag = 1 / dAr0; // 1:1投稿に対するタイムライン高さの倍率
+  const sizeNote = mag >= 1.45 ? 'タイムラインでかなり大きく表示されます 💪'
+    : mag >= 1.15 ? 'タイムラインで大きめに表示されます'
+    : mag >= 0.87 ? 'タイムラインで標準的な大きさです'
+    : 'タイムラインでは小さめ・横長に表示されます';
+  const c0crop = XSpec.cropPct(c0.outW, c0.outH, count);
   $('layoutDim').innerHTML =
     `各セル: <b>${c0.outW}×${c0.outH}（${ratioLabel(c0.outW, c0.outH)}）</b><br>${sizeNote}` +
-    (Math.abs(disp - c0ar) > 0.01 ? `<br>⚠️ この比率はタイムラインで一部見切れます（${ratioLabel(Math.round(disp * c0.outH), c0.outH)}相当で表示）` : '');
+    (c0crop.vertical > 0 ? `<br>⚠️ <b>上下 約${c0crop.vertical}%ずつ見切れます</b>（タップで全体表示）`
+     : c0crop.side > 0 ? `<br>⚠️ <b>左右 約${c0crop.side}%ずつ見切れます</b>（タップで全体表示）` : '');
   $('orderHint').textContent = S.mode === 'carousel'
     ? `Xには 1 → ${'…'} → ${count} の順（左から）で添付してください`
     : `Xには 1 → ${'…'} → ${count} の順（上から）で添付してください`;
 
-  // タイムラインプレビュー（実測仕様）
+  // タイムラインプレビュー（実測仕様・見切れ視覚化つき）
   const car = $('previewCarousel');
   car.innerHTML = '';
   const media = car.closest('.post-media');
   const raw = media ? media.clientWidth - 2 : 0;
   const cw = raw > 0 ? raw : 340;
-  const dispH = Math.round(cw / XSpec.displayAR(c0.outW, c0.outH, count));
+  const dispH = Math.round(cw / dAr0);
   S.results.forEach((r, i) => {
-    const cAr = r.w / r.h;
-    const dAr = XSpec.displayAR(r.w, r.h, count);
-    const cropped = Math.abs(dAr - cAr) > 0.01;
+    const { side, vertical } = XSpec.cropPct(r.w, r.h, count);
     const wrap = document.createElement('button');
     wrap.className = 'cell';
     wrap.style.width = cw + 'px';
@@ -332,23 +334,65 @@ async function renderNow() {
     const idx = document.createElement('span');
     idx.className = 'idx'; idx.textContent = (i + 1);
     wrap.appendChild(idx);
-    if (cropped) {
-      const tag = document.createElement('span');
-      tag.className = 'cropped'; tag.textContent = '一部クロップ';
-      wrap.appendChild(tag);
+    // 見切れ帯（どの部分が隠れるか視覚化）
+    if (vertical > 0) {
+      wrap.insertAdjacentHTML('beforeend',
+        `<div class="crop-band cb-top"><span>▲ 上 約${vertical}% 見切れ</span></div>` +
+        `<div class="crop-band cb-bottom"><span>▼ 下 約${vertical}% 見切れ</span></div>`);
+    } else if (side > 0) {
+      wrap.insertAdjacentHTML('beforeend',
+        `<div class="crop-band cb-left"><span>◀ 約${side}%</span></div>` +
+        `<div class="crop-band cb-right"><span>約${side}% ▶</span></div>`);
     }
     wrap.addEventListener('click', () => Viewer.open(S.results, i, count));
     car.appendChild(wrap);
   });
 
-  // ページングドット
+  // ページング（ドット + カウンター + 矢印ナビ）
   let dots = media.querySelector('.timeline-dots');
   if (!dots) { dots = document.createElement('div'); dots.className = 'timeline-dots'; media.appendChild(dots); }
   dots.innerHTML = S.results.map((_, i) => `<span class="${i === 0 ? 'on' : ''}"></span>`).join('');
-  car.onscroll = () => {
-    const i = Math.round(car.scrollLeft / (cw + 2));
-    dots.querySelectorAll('span').forEach((s, j) => s.classList.toggle('on', j === i));
+  const counter = media.querySelector('.page-counter') || (() => {
+    const c = document.createElement('div'); c.className = 'page-counter'; media.appendChild(c); return c;
+  })();
+  const mkArrow = (dir) => {
+    let a = media.querySelector('.nav-arrow.' + dir);
+    if (!a) {
+      a = document.createElement('button'); a.className = 'nav-arrow ' + dir;
+      a.textContent = dir === 'prev' ? '‹' : '›';
+      a.setAttribute('aria-label', dir === 'prev' ? '前へ' : '次へ');
+      media.appendChild(a);
+    }
+    a.onclick = () => {
+      const i = Math.round(car.scrollLeft / (cw + 2));
+      const t = Math.max(0, Math.min(count - 1, i + (dir === 'prev' ? -1 : 1)));
+      car.scrollTo({ left: t * (cw + 2), behavior: 'smooth' });
+    };
+    return a;
   };
+  const prevB = mkArrow('prev'), nextB = mkArrow('next');
+  const updateNav = () => {
+    const i = Math.max(0, Math.min(count - 1, Math.round(car.scrollLeft / (cw + 2))));
+    dots.querySelectorAll('span').forEach((s, j) => s.classList.toggle('on', j === i));
+    counter.textContent = `${i + 1} / ${count}`;
+    counter.style.display = count > 1 ? '' : 'none';
+    prevB.style.display = i > 0 ? '' : 'none';
+    nextB.style.display = i < count - 1 ? '' : 'none';
+  };
+  car.onscroll = updateNav;
+  updateNav();
+
+  // 表示サイズ比較（1:1投稿を基準にした高さゲージ）
+  const sc = $('sizeCompare');
+  if (sc) {
+    const maxMag = Math.max(2, mag * 1.08);
+    const pct = (m) => Math.max(2, Math.round(m / maxMag * 100));
+    sc.querySelector('.sc-base').style.width = pct(1) + '%';
+    sc.querySelector('.sc-now').style.width = pct(mag) + '%';
+    sc.querySelector('.sc-now-val').textContent = mag.toFixed(1) + '×';
+    sc.querySelector('.sc-note').innerHTML =
+      `1枚目の比率で全体の高さが決まります · スワイプ／矢印で切替 · 画像タップで拡大`;
+  }
 
   // 拡大プレビュー
   const stack = $('expandedStack');
