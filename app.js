@@ -120,23 +120,6 @@ async function loadImage(file) {
 }
 
 /* ── STEP2: モード・枚数 ───────────────── */
-document.querySelectorAll('#splitMode .opt-card').forEach(b => {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('#splitMode .opt-card').forEach(x => x.classList.remove('selected'));
-    b.classList.add('selected');
-    S.mode = b.dataset.v;
-    render();
-  });
-});
-document.querySelectorAll('#pieces .pill').forEach(b => {
-  b.addEventListener('click', () => {
-    document.querySelectorAll('#pieces .pill').forEach(x => x.classList.remove('selected'));
-    b.classList.add('selected');
-    S.pieces = +b.dataset.v;
-    render();
-  });
-});
-
 function setStyleUI(v) {
   S.style = v;
   document.querySelectorAll('#styleMode .seg').forEach(s => s.classList.toggle('selected', s.dataset.v === v));
@@ -146,32 +129,41 @@ function setStyleUI(v) {
     ? '各セルの比率を3:4/4:5に揃えて、きれいなカルーセルにします'
     : '元の写真全体を、等しい幅で切り分けます';
 }
+function syncSplitPick() {
+  document.querySelectorAll('#splitPick .pill').forEach(x => {
+    x.classList.toggle('selected', x.dataset.mode === S.mode && +x.dataset.v === S.pieces);
+  });
+}
 function autoMode() {
   if (!S.bitmap) return;
   const ar = S.bitmap.width / S.bitmap.height;
   let mode, style, why;
   if (ar < 0.56) {
-    // 超縦長（1:2〜）: 段分割×全部残す → 各セルがほどよい縦長〜正方形
     mode = 'rows'; style = 'full';
-    why = '段分割・全部残す（超縦長の写真だから、等分だけでセルが大きくなります）';
+    why = '縦に4（超縦長の写真だから、等分だけでセルが大きくなります）';
   } else if (ar < 1.0) {
-    // 縦長（3:4・9:16など）: 段分割×比率揃え3:4 → 縦積み縦長セルで高さ1.8×
     mode = 'rows'; style = 'ratio';
-    why = '段分割・比率を揃える（縦長の写真を縦長セルで大きく見せます）';
+    why = '縦に4 ＋ 比率を揃える（縦長の写真を縦長セルで大きく見せます）';
   } else {
-    // 正方形・横長: カルーセル分割×全部残す → 左からスライスで縦長セル
     mode = 'carousel'; style = 'full';
-    why = 'カルーセル分割・全部残す（正方形〜横長の写真だから、左から切るとセルが縦長になります）';
+    why = '横に4（正方形〜横長の写真は左から切るとセルが縦長になります）';
   }
-  S.mode = mode;
-  document.querySelectorAll('#splitMode .opt-card').forEach(x => {
-    x.classList.toggle('selected', x.dataset.v === S.mode);
-  });
+  S.mode = mode; S.pieces = 4;
+  syncSplitPick();
   setStyleUI(style);
   const note = $('autoNote');
   note.style.display = 'block';
   $('recLayout').textContent = why;
 }
+document.querySelectorAll('#splitPick .pill').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('#splitPick .pill').forEach(x => x.classList.remove('selected'));
+    b.classList.add('selected');
+    S.mode = b.dataset.mode;
+    S.pieces = +b.dataset.v;
+    render();
+  });
+});
 
 /* ── STEP3: スタイル・設定 ─────────────── */
 function bindSeg(id, cb) {

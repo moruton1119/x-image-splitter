@@ -167,7 +167,12 @@ button { cursor: pointer; }
   color: var(--fg-2); padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-pill); transition: all var(--motion-fast);
 }
-.opt-card .pill.selected { border-color: var(--x-blue); color: var(--x-blue); background: var(--x-blue-dim); font-weight: 700; }
+.split-pick .dir-label { font-size: var(--text-sm); color: var(--muted); margin: var(--space-2) 0 6px; }
+.split-pick .pills { display: flex; gap: 8px; }
+.split-pick .pill { flex: 1; padding: 10px 0; font-size: var(--text-base); }
+.split-pick .pill.selected { border-color: var(--x-blue); color: var(--x-blue); background: var(--x-blue-dim); font-weight: 700; }
+.auto-note { margin-top: var(--space-2); font-size: var(--text-sm); color: var(--fg-2); background: rgba(29,155,240,0.08); border: 1px solid rgba(29,155,240,0.25); padding: 8px 12px; border-radius: 10px; }
+.auto-note .rec { color: var(--x-blue); font-weight: 700; }
 .pieces-row { display: flex; gap: var(--space-2); margin-top: var(--space-3); }
 .auto-note { margin-top: var(--space-3); font-size: var(--text-sm); color: var(--muted); }
 .auto-note .rec { color: var(--x-blue); text-decoration: underline; cursor: pointer; }
@@ -434,23 +439,22 @@ button { cursor: pointer; }
         <div class="step-desc">Xは1度に4枚まで投稿できます（多いほど1枚ずつが小さくなります）</div>
       </div>
     </div>
-    <div class="opt-row" id="splitMode">
-      <button class="opt-card selected" data-v="carousel">
-        <div class="t">📱 カルーセル分割</div>
-        <div class="d">横長・正方形の写真向き。<b>左から順に4枚</b>に切り分けて、スワイプで繋がる投稿に</div>
-      </button>
-      <button class="opt-card" data-v="rows">
-        <div class="t">📖 段分割</div>
-        <div class="d">縦長の写真向き。<b>上から順に4段</b>に切り分けて、ページをめくるような投稿に</div>
-      </button>
-    </div>
-    <div class="pieces-row" id="pieces">
-      <button class="pill selected" data-v="2">2枚</button>
-      <button class="pill" data-v="3">3枚</button>
-      <button class="pill active selected" data-v="4">4枚（定番）</button>
+    <div class="split-pick" id="splitPick">
+      <div class="dir-label">◀ 横に分割（左から順に投稿）</div>
+      <div class="pills">
+        <button class="pill" data-mode="carousel" data-v="2">横に2</button>
+        <button class="pill" data-mode="carousel" data-v="3">横に3</button>
+        <button class="pill" data-mode="carousel" data-v="4">横に4</button>
+      </div>
+      <div class="dir-label">▼ 縦に分割（上から順に投稿）</div>
+      <div class="pills">
+        <button class="pill" data-mode="rows" data-v="2">縦に2</button>
+        <button class="pill" data-mode="rows" data-v="3">縦に3</button>
+        <button class="pill" data-mode="rows" data-v="4">縦に4</button>
+      </div>
     </div>
     <div class="auto-note" id="autoNote" style="display:none">
-      この写真へのおすすめ: <span class="rec" id="recLayout">カルーセル分割</span>
+      この写真へのおすすめ: <span class="rec" id="recLayout">横に4</span>
     </div>
     <div class="dim-note" id="layoutDim"></div>
   </section>
