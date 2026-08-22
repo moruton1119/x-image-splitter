@@ -395,15 +395,7 @@ button { cursor: pointer; }
   </div>
 </header>
 
-<div class="main-tabs">
-  <button class="main-tab active" data-tab="split">✂️ 分割<small>大きく見せる</small></button>
-  <button class="main-tab" data-tab="preview">👁 プレビュー<small>投稿前チェック</small></button>
-</div>
-
 <main class="container">
-
-<!-- ══════════════ TAB: 分割 ══════════════ -->
-<div id="tabSplit">
   <section class="hero">
     <div class="badge">PHOTO → BIG POST</div>
     <h1>1枚の写真を、大きく見える投稿に。</h1>
@@ -435,90 +427,18 @@ button { cursor: pointer; }
       </div>
     </div>
     <div class="split-pick" id="splitPick">
-      <div class="dir-label">◀ 横に分割（左から順に投稿）</div>
       <div class="pills">
-        <button class="pill" data-mode="carousel" data-v="2">横に2</button>
-        <button class="pill" data-mode="carousel" data-v="3">横に3</button>
-        <button class="pill" data-mode="carousel" data-v="4">横に4</button>
+        <button class="pill" data-v="2">横に2</button>
+        <button class="pill" data-v="3">横に3</button>
+        <button class="pill" data-v="4">横に4</button>
       </div>
-      <div class="dir-label">▼ 縦に分割（上から順に投稿）</div>
-      <div class="pills">
-        <button class="pill" data-mode="rows" data-v="2">縦に2</button>
-        <button class="pill" data-mode="rows" data-v="3">縦に3</button>
-        <button class="pill" data-mode="rows" data-v="4">縦に4</button>
-      </div>
-    </div>
-    <div class="auto-note" id="autoNote" style="display:none">
-      この写真へのおすすめ: <span class="rec" id="recLayout">横に4</span>
     </div>
     <div class="dim-note" id="layoutDim"></div>
   </section>
 
-  <section class="panel" id="step3" style="display:none">
-    <div class="step-head">
-      <span class="step-num">3</span>
-      <div>
-        <div class="step-title">切り方のスタイル</div>
-        <div class="step-desc">写真を全部残すか、比率を揃えてきれいに見せるか</div>
-      </div>
-    </div>
-    <div class="settings-grid">
-      <div class="setting-block">
-        <span class="set-label">スタイル</span>
-        <div class="seg-group" id="styleMode">
-          <button class="seg selected" data-v="full">写真を全部残す</button>
-          <button class="seg" data-v="ratio">比率を揃える</button>
-        </div>
-        <div class="gap-visual" id="styleNote">元の写真全体を、等しい幅で切り分けます</div>
-        <div id="ratioPick" style="display:none; margin-top:8px">
-          <div class="seg-group" id="cellRatio">
-            <button class="seg selected" data-v="3:4">3:4（Xで見やすい縦長）</button>
-            <button class="seg" data-v="4:5">4:5（少し横幅広め）</button>
-          </div>
-          <div class="range-row" style="margin-top:12px">
-            <input type="range" id="focusY" min="0" max="100" value="50" disabled>
-            <span class="range-val" id="focusYVal">50%</span>
-          </div>
-          <div class="gap-visual" id="focusLabel">上下位置: 写真のどの高さを切り出すか（顔などを見せたい位置へ）</div>
-        </div>
-      </div>
-      <div class="setting-block">
-        <span class="set-label">隙間（ギャップ）補正</span>
-        <div class="range-row">
-          <input type="range" id="gap" min="0" max="40" value="0">
-          <span class="range-val" id="gapVal">0px</span>
-        </div>
-        <div class="gap-visual">X表示で画像のつなぎ目がずれる場合だけ調整（通常は0のまま）</div>
-      </div>
-      <div class="setting-block">
-        <span class="set-label">出力フォーマット</span>
-        <div class="seg-group" id="format">
-          <button class="seg selected" data-v="png">PNG</button>
-          <button class="seg" data-v="jpeg">JPEG</button>
-          <button class="seg" data-v="webp">WebP</button>
-        </div>
-        <div id="qualityWrap" style="display:none; margin-top:8px">
-          <div class="range-row">
-            <input type="range" id="quality" min="50" max="100" value="92">
-            <span class="range-val" id="qualityVal">92%</span>
-          </div>
-        </div>
-      </div>
-      <div class="setting-block">
-        <span class="set-label">出力セル幅</span>
-        <div class="seg-group" id="cellWidth">
-          <button class="seg selected" data-v="orig">元のまま</button>
-          <button class="seg" data-v="640">640</button>
-          <button class="seg" data-v="1080">1080</button>
-          <button class="seg" data-v="1440">1440</button>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <section class="panel" id="step4" style="display:none">
     <div class="step-head">
-      <span class="step-num">4</span>
+      <span class="step-num">3</span>
       <div>
         <div class="step-title">プレビュー</div>
         <div class="step-desc">Xで実際にどう見えるか（実測クロップ仕様で再現）</div>
@@ -562,20 +482,16 @@ button { cursor: pointer; }
 
   <section class="panel" id="step5" style="display:none">
     <div class="step-head">
-      <span class="step-num">5</span>
+      <span class="step-num">4</span>
       <div>
         <div class="step-title">ダウンロード</div>
         <div class="step-desc" id="orderHint">Xには 1 → 2 → 3 → 4 の順（左から）で添付してください</div>
       </div>
     </div>
     <div class="out-grid" id="outGrid"></div>
-    <div class="check-row">
-      <label><input type="checkbox" id="reverseDl"> 逆順でダウンロード（保存フォルダで 1→2→3→4 の順に並ぶ）</label>
-    </div>
     <div class="cta-row">
       <button class="btn-x" id="zipBtn">📦 ZIPで一括DL</button>
       <button class="btn-ghost" id="allBtn">1枚ずつDL</button>
-      <button class="btn-ghost" id="toPreviewBtn">👁 プレビューで確認</button>
       <button class="btn-ghost" id="postBtn">✏️ Xに投稿する画面を開く</button>
     </div>
     <div class="post-open-hint">ダウンロード後、番号の順に添付すると繋がります</div>
@@ -592,88 +508,9 @@ button { cursor: pointer; }
     <ol>
       <li>Xのタイムラインでは、<b>縦長の画像（〜4:5）は高さいっぱいに大きく表示</b>されます</li>
       <li>横長や正方形の写真を1枚で投稿すると小さくなりがち。<b>縦長セルに分割して4枚投稿</b>すると、各枚が大きく表示されます</li>
-      <li>カルーセル分割なら<code>1→2→3→4</code>をスワイプでなぞると元の写真が復元。<b>漫画やイラスト、衣装紹介に最適</b></li>
-      <li>縦長写真は段分割で4ページに。「上から順に」添付すれば、スクロールで読める投稿になります</li>
+      <li>スワイプで<code>1→2→3→4</code>となぞると元の写真が復元。<b>漫画やイラスト、風景写真に最適</b></li>
     </ol>
   </section>
-</div>
-
-<!-- ══════════════ TAB: プレビュー ══════════════ -->
-<div id="tabPreview" hidden>
-  <section class="hero">
-    <div class="badge">PRE-POST CHECK</div>
-    <h1>投稿する前に、見え方を確認。</h1>
-    <p>写真を並べて、Xでの実際の表示サイズ・見切れ・文字数を事前チェック</p>
-  </section>
-
-  <section class="panel">
-    <div class="step-head">
-      <span class="step-num">1</span>
-      <div>
-        <div class="step-title">写真を選ぶ（最大4枚・縦横混在OK）</div>
-        <div class="step-desc">分割くんで作った画像も、ここで確認できます</div>
-      </div>
-    </div>
-    <div class="dropzone" id="pvDropzone" role="button" tabindex="0" aria-label="画像を選択">
-      <div class="icon">📎</div>
-      <div class="main">ここに画像をドロップ、またはクリックして選択</div>
-      <div class="sub">複数選択OK・順番はあとで並べ替えられます</div>
-    </div>
-    <input type="file" id="pvFiles" accept="image/*" multiple hidden>
-  </section>
-
-  <section class="panel" id="pvListPanel" style="display:none">
-    <div class="step-head">
-      <span class="step-num">2</span>
-      <div>
-        <div class="step-title">並び順と見切れチェック</div>
-        <div class="step-desc">⚠️が付いた写真はタイムラインで一部見切れます（タップすれば全体表示）</div>
-      </div>
-    </div>
-    <div class="photo-list" id="pvList"></div>
-    <div class="auto-note">💡 1枚目の写真の形が、タイムラインでの表示サイズを決めます。縦長の写真を1枚目にすると大きく表示されます</div>
-  </section>
-
-  <section class="panel" id="pvTextPanel" style="display:none">
-    <div class="step-head">
-      <span class="step-num">3</span>
-      <div>
-        <div class="step-title">投稿文（省略可）</div>
-        <div class="step-desc">Xと同じ計算方法で文字数をカウントします</div>
-      </div>
-    </div>
-    <div class="post-input-wrap">
-      <textarea class="post-input" id="pvText" placeholder="投稿文を入力…（URLは23文字、日本語は2文字分としてカウント）"></textarea>
-      <div class="char-counter" id="pvCounter">0 / 280（X換算）</div>
-    </div>
-  </section>
-
-  <section class="panel" id="pvSimPanel" style="display:none">
-    <div class="step-head">
-      <span class="step-num">4</span>
-      <div>
-        <div class="step-title">タイムライン表示シミュレーション</div>
-        <div class="step-desc">画像をタップすると拡大表示（実際の投稿と同じ操作）</div>
-      </div>
-    </div>
-    <div class="phone-frame" id="pvPhone">
-      <div class="phone-status"><span>9:41</span><span>􀙇</span><span>📶 🔋</span></div>
-      <div class="phone-tabs"><span>おすすめ</span><span class="on">フォロー中</span></div>
-      <div class="post-card">
-        <div class="post-head">
-          <div class="post-avatar">分</div>
-          <div class="post-names">
-            <div class="name">あなた ✓</div>
-            <div class="handle">@you · 今</div>
-          </div>
-        </div>
-        <div class="post-text" id="pvPostText">（投稿文なし）</div>
-        <div class="post-media" id="pvMedia"></div>
-        <div class="post-actions"><span>💬 0</span><span>🔁 0</span><span>❤️ 0</span><span>📊 0</span></div>
-      </div>
-    </div>
-  </section>
-</div>
 
 </main>
 
@@ -700,7 +537,6 @@ button { cursor: pointer; }
 
 <div id="toast" role="status"></div>
 
-<script src="vendor/twitter-text.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
