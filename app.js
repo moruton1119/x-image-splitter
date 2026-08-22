@@ -441,18 +441,7 @@ async function renderNow() {
       `1枚目の比率で全体の高さが決まります · スワイプ／矢印で切替 · 画像タップで拡大`;
   }
 
-  // 元の並び
-  const frame = $('flatFrame');
-  frame.innerHTML = '';
-  frame.style.gridTemplateColumns = `repeat(${cells.length > 1 && S.mode === 'carousel' ? cells.length : 1}, max-content)`;
-  const fw = S.mode === 'carousel' ? Math.max(80, Math.floor(520 / cells.length)) : 360;
-  S.results.forEach((r, i) => {
-    const img = document.createElement('img');
-    img.src = r.url; img.alt = `元の位置${i + 1}`;
-    img.style.width = fw + 'px';
-    img.style.display = 'block';
-    frame.appendChild(img);
-  });
+
 
   // 出力グリッド
   const og = $('outGrid');
