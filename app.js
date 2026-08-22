@@ -191,7 +191,7 @@ async function renderNow() {
     `各セル: <b>${c0.outW}×${c0.outH}（${ratioLabel(c0.outW, c0.outH)}）</b><br>${sizeNote}` +
     (c0crop.vertical > 0 ? `<br>⚠️ <b>上下 約${c0crop.vertical}%ずつ見切れます</b>（タップで全体表示）`
      : c0crop.side > 0 ? `<br>⚠️ <b>左右 約${c0crop.side}%ずつ見切れます</b>（タップで全体表示）` : '');
-  $('orderHint').textContent = `Xには 1 → … → ${count} の順（左から）で添付してください`;
+  $('orderHint').textContent = `Xには ${Array.from({ length: count }, (_, i) => i + 1).join(' → ')} の順（左から）で添付してください`;
 
   // タイムラインプレビュー（実測仕様・見切れ視覚化つき）
   const car = $('previewCarousel');
