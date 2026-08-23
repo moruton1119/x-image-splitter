@@ -181,10 +181,12 @@ async function renderNow() {
   const c0 = cells[0];
   const count = S.results.length;
   const dAr0 = XSpec.displayAR(c0.outW, c0.outH, count);
-  const mag = 1 / dAr0;
-  const sizeNote = mag >= 1.45 ? 'タイムラインでかなり大きく表示されます 💪'
-    : mag >= 1.15 ? 'タイムラインで大きめに表示されます'
-    : mag >= 0.87 ? 'タイムラインで標準的な大きさです'
+  // 実測(2026-08 X本体): 複数画像は最初の2枚が横に並んで表示（1枚あたりカルーセル幅の約48%）
+  const CARD_FRAC = 0.48;
+  const mag = CARD_FRAC / dAr0; // 1:1単体投稿（高さ=幅）に対する表示高さの倍率
+  const sizeNote = mag >= 0.95 ? '1:1の1枚投稿と同等以上の高さで表示されます 💪'
+    : mag >= 0.7 ? 'タイムラインで大きめに表示されます'
+    : mag >= 0.45 ? 'タイムラインで標準的な大きさです'
     : 'タイムラインでは小さめ・横長に表示されます';
   const c0crop = XSpec.cropPct(c0.outW, c0.outH, count);
   $('layoutDim').innerHTML =
@@ -199,12 +201,13 @@ async function renderNow() {
   const media = car.closest('.post-media');
   const raw = media ? media.clientWidth - 2 : 0;
   const cw = raw > 0 ? raw : 340;
-  const dispH = Math.round(cw / dAr0);
+  const cardW = Math.round(cw * CARD_FRAC); // 実測: 最初の2枚が並ぶ（1枚あたり48%）
+  const dispH = Math.round(cardW / dAr0);
   S.results.forEach((r, i) => {
     const { side, vertical } = XSpec.cropPct(r.w, r.h, count);
     const wrap = document.createElement('button');
     wrap.className = 'cell';
-    wrap.style.width = cw + 'px';
+    wrap.style.width = cardW + 'px';
     wrap.style.height = dispH + 'px';
     const img = document.createElement('img');
     img.src = r.url; img.alt = `セル${i + 1}`;
@@ -241,15 +244,15 @@ async function renderNow() {
       media.appendChild(a);
     }
     a.onclick = () => {
-      const i = Math.round(car.scrollLeft / (cw + 2));
+      const i = Math.round(car.scrollLeft / (cardW + 2));
       const t = Math.max(0, Math.min(count - 1, i + (dir === 'prev' ? -1 : 1)));
-      car.scrollTo({ left: t * (cw + 2), behavior: 'smooth' });
+      car.scrollTo({ left: t * (cardW + 2), behavior: 'smooth' });
     };
     return a;
   };
   const prevB = mkArrow('prev'), nextB = mkArrow('next');
   const updateNav = () => {
-    const i = Math.max(0, Math.min(count - 1, Math.round(car.scrollLeft / (cw + 2))));
+    const i = Math.max(0, Math.min(count - 1, Math.round(car.scrollLeft / (cardW + 2))));
     dots.querySelectorAll('span').forEach((s, j) => s.classList.toggle('on', j === i));
     counter.textContent = `${i + 1} / ${count}`;
     counter.style.display = count > 1 ? '' : 'none';
@@ -263,10 +266,11 @@ async function renderNow() {
   window.__updateTimelineLayout = () => {
     const m2 = car.closest('.post-media');
     const cw2 = m2 ? m2.clientWidth - 2 : 340;
+    const cardW2 = Math.round(cw2 * CARD_FRAC);
     const dAr2 = XSpec.displayAR(S.results[0].w, S.results[0].h, count);
-    const dispH2 = Math.round(cw2 / dAr2);
+    const dispH2 = Math.round(cardW2 / dAr2);
     car.querySelectorAll('.cell').forEach(c => {
-      c.style.width = cw2 + 'px';
+      c.style.width = cardW2 + 'px';
       c.style.height = dispH2 + 'px';
     });
   };
@@ -274,13 +278,13 @@ async function renderNow() {
   // 表示サイズ比較（1:1投稿を基準にした高さゲージ）
   const sc = $('sizeCompare');
   if (sc) {
-    const maxMag = Math.max(2, mag * 1.08);
+    const maxMag = Math.max(1.15, mag * 1.12);
     const pct = (m) => Math.max(2, Math.round(m / maxMag * 100));
     sc.querySelector('.sc-base').style.width = pct(1) + '%';
     sc.querySelector('.sc-now').style.width = pct(mag) + '%';
     sc.querySelector('.sc-now-val').textContent = mag.toFixed(1) + '×';
     sc.querySelector('.sc-note').innerHTML =
-      `1枚目の比率で全体の高さが決まります · スワイプ／矢印で切替 · 画像タップで拡大`;
+      `タイムラインでは最初の2枚が並んで表示されます · スワイプ／矢印で全枚確認 · タップで拡大`;
   }
 
   // DLグリッド
