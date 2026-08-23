@@ -414,7 +414,8 @@ async function buildZip(files) {
   eocd.setUint32(0, 0x06054b50, true);
   eocd.setUint16(8, files.length, true);
   eocd.setUint16(10, files.length, true);
-  eocd.setUint32(12, offset, true);
+  eocd.setUint32(12, central.reduce((s, c) => s + c.length, 0), true); // 中央ディレクトリのサイズ
+  eocd.setUint32(16, offset, true); // 中央ディレクトリの開始位置（ローカルヘッダ群の直後）
   chunks.push(...central, new Uint8Array(eocd.buffer));
   return new Blob(chunks, { type: 'application/zip' });
 }
