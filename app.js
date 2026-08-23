@@ -20,11 +20,13 @@ function toast(msg) {
  * X表示仕様モジュール（iruagaru実測ベース）
  * ═══════════════════════════════════════════════════════════════ */
 const XSpec = {
-  /* 枚数ごとのタイムライン全表示範囲 (w/h) */
+  /* 枚数ごとのタイムライン表示クランプ (w/h)
+     実測2026-08: 縦長画像は上下を切られず全体表示(contain)。
+     横長のみ左右クロップ。 */
   limits(count) {
     if (count <= 1) return { min: 0, max: Infinity };
-    if (count === 2) return { min: 0.5, max: 1.5 };
-    return { min: 0.56, max: 1.18 };
+    if (count === 2) return { min: 0, max: 1.5 };
+    return { min: 0, max: 1.18 };
   },
   displayAR(w, h, count) {
     const ar = w / h;
@@ -184,15 +186,15 @@ async function renderNow() {
   // 実測(2026-08 X本体): 複数画像は最初の2枚が横に並んで表示（1枚あたりカルーセル幅の約48%）
   const CARD_FRAC = 0.48;
   const mag = CARD_FRAC / dAr0; // 1:1単体投稿（高さ=幅）に対する表示高さの倍率
-  const sizeNote = mag >= 0.95 ? '1:1の1枚投稿と同等以上の高さで表示されます 💪'
+  const sizeNote = mag >= 1.4 ? '1:1の1枚投稿よりかなり大きく表示されます 💪'
+    : mag >= 0.95 ? '1:1の1枚投稿と同等以上の高さで表示されます'
     : mag >= 0.7 ? 'タイムラインで大きめに表示されます'
     : mag >= 0.45 ? 'タイムラインで標準的な大きさです'
     : 'タイムラインでは小さめ・横長に表示されます';
   const c0crop = XSpec.cropPct(c0.outW, c0.outH, count);
   $('layoutDim').innerHTML =
     `各セル: <b>${c0.outW}×${c0.outH}（${ratioLabel(c0.outW, c0.outH)}）</b><br>${sizeNote}` +
-    (c0crop.vertical > 0 ? `<br>⚠️ <b>上下 約${c0crop.vertical}%ずつ見切れます</b>（タップで全体表示）`
-     : c0crop.side > 0 ? `<br>⚠️ <b>左右 約${c0crop.side}%ずつ見切れます</b>（タップで全体表示）` : '');
+    (c0crop.side > 0 ? `<br>⚠️ <b>左右 約${c0crop.side}%ずつ見切れます</b>（タップで全体表示）` : '');
   $('orderHint').textContent = `Xには ${Array.from({ length: count }, (_, i) => i + 1).join(' → ')} の順（左から）で添付してください`;
 
   // タイムラインプレビュー（実測仕様・見切れ視覚化つき）
@@ -204,7 +206,7 @@ async function renderNow() {
   const cardW = Math.round(cw * CARD_FRAC); // 実測: 最初の2枚が並ぶ（1枚あたり48%）
   const dispH = Math.round(cardW / dAr0);
   S.results.forEach((r, i) => {
-    const { side, vertical } = XSpec.cropPct(r.w, r.h, count);
+    const { side } = XSpec.cropPct(r.w, r.h, count);
     const wrap = document.createElement('button');
     wrap.className = 'cell';
     wrap.style.width = cardW + 'px';
@@ -215,11 +217,7 @@ async function renderNow() {
     const idx = document.createElement('span');
     idx.className = 'idx'; idx.textContent = (i + 1);
     wrap.appendChild(idx);
-    if (vertical > 0) {
-      wrap.insertAdjacentHTML('beforeend',
-        `<div class="crop-band cb-top"><span>▲ 上 約${vertical}% 見切れ</span></div>` +
-        `<div class="crop-band cb-bottom"><span>▼ 下 約${vertical}% 見切れ</span></div>`);
-    } else if (side > 0) {
+    if (side > 0) {
       wrap.insertAdjacentHTML('beforeend',
         `<div class="crop-band cb-left"><span>◀ 約${side}%</span></div>` +
         `<div class="crop-band cb-right"><span>約${side}% ▶</span></div>`);
