@@ -259,6 +259,18 @@ async function renderNow() {
   car.onscroll = updateNav;
   updateNav();
 
+  // resize用: 画像を再生成せずレイアウトだけ更新（白フラッシュ防止）
+  window.__updateTimelineLayout = () => {
+    const m2 = car.closest('.post-media');
+    const cw2 = m2 ? m2.clientWidth - 2 : 340;
+    const dAr2 = XSpec.displayAR(S.results[0].w, S.results[0].h, count);
+    const dispH2 = Math.round(cw2 / dAr2);
+    car.querySelectorAll('.cell').forEach(c => {
+      c.style.width = cw2 + 'px';
+      c.style.height = dispH2 + 'px';
+    });
+  };
+
   // 表示サイズ比較（1:1投稿を基準にした高さゲージ）
   const sc = $('sizeCompare');
   if (sc) {
@@ -428,5 +440,17 @@ function dosTime(d) {
   };
 }
 
-window.addEventListener('resize', () => { if (S.results.length) render(); });
+let lastVW = window.innerWidth;
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  // 高さだけの変化（モバイルのアドレスバー出し入れ）は無視
+  if (Math.abs(window.innerWidth - lastVW) < 1) return;
+  lastVW = window.innerWidth;
+  if (!S.results.length) return;
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    // 画像は再生成せず、プレビューの幅・高さだけ更新（白フラッシュ防止）
+    if (window.__updateTimelineLayout) window.__updateTimelineLayout();
+  }, 200);
+});
 syncSplitPick();
