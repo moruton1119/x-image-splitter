@@ -74,6 +74,8 @@ async function loadImage(file) {
     const buf = await file.arrayBuffer();
     S.bitmap = await createImageBitmap(new Blob([buf]), { imageOrientation: 'from-image' });
     S.fileName = file.name.replace(/\.[^.]+$/, '');
+    const pb = document.querySelector('.privacy-banner');
+    if (pb) pb.remove(); // 画像が読み込まれたら訴求は役割完了
     dz.classList.add('loaded');
     dz.innerHTML = `
       <div class="src-preview">
