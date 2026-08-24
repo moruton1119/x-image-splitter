@@ -5,6 +5,8 @@
 'use strict';
 
 const $ = (id) => document.getElementById(id);
+/* HTML挿入前のエスケープ（ファイル名は外部入力扱い — XSS防止） */
+const esc = (s) => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 /* ── Toast ─────────────────────────────── */
 let toastTimer = null;
@@ -34,13 +36,10 @@ const XSpec = {
     return Math.min(Math.max(ar, min), max);
   },
   cropPct(w, h, count) {
-    if (count <= 1) return { side: 0, vertical: 0 };
-    const { min, max } = this.limits(count);
+    if (count <= 1) return { side: 0 };
+    const { max } = this.limits(count);
     const ar = w / h;
-    return {
-      side: ar > max ? Math.round((1 - max / ar) * 50) : 0,
-      vertical: ar < min ? Math.round((1 - ar / min) * 50) : 0,
-    };
+    return { side: ar > max ? Math.round((1 - max / ar) * 50) : 0 };
   },
 };
 
@@ -50,6 +49,7 @@ const XSpec = {
 const S = {
   bitmap: null,
   fileName: 'image',
+  srcUrl: null,       // 元画像プレビュー用blob URL
   pieces: 4,          // 2/3/4（横分割のみ）
   results: [],
 };
@@ -74,15 +74,17 @@ async function loadImage(file) {
     const buf = await file.arrayBuffer();
     S.bitmap = await createImageBitmap(new Blob([buf]), { imageOrientation: 'from-image' });
     S.fileName = file.name.replace(/\.[^.]+$/, '');
+    if (S.srcUrl) URL.revokeObjectURL(S.srcUrl); // 旧プレビューURL解放（リーク防止）
+    S.srcUrl = URL.createObjectURL(file);
     const pb = document.querySelector('.privacy-banner');
     if (pb) pb.remove(); // 画像が読み込まれたら訴求は役割完了
     dz.classList.add('loaded');
     dz.innerHTML = `
       <div class="src-preview">
-        <img src="${URL.createObjectURL(file)}" alt="元画像">
+        <img src="${S.srcUrl}" alt="元画像">
         <div class="src-info">
           元画像: ${S.bitmap.width} × <span class="dim">${S.bitmap.height}</span> px<br>
-          <span style="color:var(--muted);font-size:12px">${file.name}</span><br>
+          <span style="color:var(--muted);font-size:12px">${esc(file.name)}</span><br>
           <button class="link-btn" id="changeImg">別の画像を選ぶ</button>
         </div>
       </div>`;
@@ -188,7 +190,7 @@ async function renderNow() {
   // 実測(2026-08 X本体): 複数画像は最初の2枚が横に並んで表示（1枚あたりカルーセル幅の約48%）
   const CARD_FRAC = 0.48;
   const mag = CARD_FRAC / dAr0; // 1:1単体投稿（高さ=幅）に対する表示高さの倍率
-  const sizeNote = mag >= 1.4 ? '1:1の1枚投稿よりかなり大きく表示されます 💪'
+  const sizeNote = mag >= 1.4 ? '1:1の1枚投稿よりかなり大きく表示されます'
     : mag >= 0.95 ? '1:1の1枚投稿と同等以上の高さで表示されます'
     : mag >= 0.7 ? 'タイムラインで大きめに表示されます'
     : mag >= 0.45 ? 'タイムラインで標準的な大きさです'
@@ -294,9 +296,9 @@ async function renderNow() {
     const cell = document.createElement('div');
     cell.className = 'out-cell';
     cell.innerHTML = `
-      <img src="${r.url}" alt="${r.name}">
+      <img src="${r.url}" alt="${esc(r.name)}">
       <div class="meta">
-        <div class="fname">${r.name}</div>
+        <div class="fname">${esc(r.name)}</div>
         <div class="fsize">${r.w}×${r.h}（${ratioLabel(r.w, r.h)}）· ${(r.blob.size / 1024).toFixed(0)} KB</div>
         <div class="dl-links">
           <button class="link-btn dl">ダウンロード</button>
@@ -367,10 +369,12 @@ $('zipBtn').addEventListener('click', async () => {
   try {
     toast('ZIP生成中…');
     const zip = await buildZip(S.results.map(r => ({ name: r.name, data: r.blob })));
+    const zipUrl = URL.createObjectURL(zip);
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(zip);
+    a.href = zipUrl;
     a.download = `${S.fileName}_split.zip`;
     document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(zipUrl), 10000); // DL開始後に解放
     toast('ZIPをダウンロードしました！');
   } catch (e) { console.error(e); toast('ZIP生成に失敗…'); }
 });
