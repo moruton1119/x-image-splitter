@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="description" content="X(旧Twitter)投稿用写真ツール。1枚の写真を分割して大きく見せる「分割」と、投稿前の見え方チェック「プレビュー」。完全ローカル処理でサーバー送信ゼロ。">
+<meta name="description" content="X(旧Twitter)投稿用写真ツール。1枚の写真を分割して大きく見せる「分割」と、投稿前の見え方チェック「プレビュー」。完全ローカル処理でサーバー送信ゼロ・画像収集なし。">
 <meta property="og:title" content="X写真スタジオ — 分割・プレビュー">
 <meta property="og:description" content="1枚の写真を分割して大きく見せる＋投稿前プレビュー。完全ローカル処理。">
 <meta property="og:type" content="website">
@@ -116,6 +116,18 @@ button { cursor: pointer; }
   color: var(--muted); border: 1px solid var(--border); background: var(--surface);
   border-radius: var(--radius-pill); padding: 3px 12px; margin-bottom: var(--space-3); letter-spacing: 1.5px;
 }
+
+/* ── プライバシーバナー（最重要訴求） ───── */
+.privacy-banner {
+  display: flex; align-items: center; gap: 14px;
+  border: 2px solid var(--success); border-radius: 14px;
+  background: rgba(0, 186, 124, 0.10);
+  padding: 16px 20px; margin: 0 0 var(--space-5);
+}
+.privacy-banner .pb-icon { flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; background: rgba(0, 186, 124, 0.18); display: flex; align-items: center; justify-content: center; color: var(--success); }
+.privacy-banner .pb-title { font-weight: 700; font-size: clamp(15px, 2.6vw, 18px); color: var(--fg); line-height: 1.4; }
+.privacy-banner .pb-title b { color: var(--success); }
+.privacy-banner .pb-sub { font-size: var(--text-sm); color: var(--fg-2); margin-top: 4px; line-height: 1.5; }
 
 /* ── Panel / card ──────────────────────── */
 .panel {
@@ -424,6 +436,16 @@ button { cursor: pointer; }
     <p>写真を分割して、タイムラインで大きく表示される投稿用画像を作ります</p>
   </section>
 
+  <section class="privacy-banner" role="note" aria-label="プライバシーに関するお知らせ">
+    <div class="pb-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/></svg>
+    </div>
+    <div>
+      <div class="pb-title">あなたの画像を<b>収集しません</b>。仕組み上、<b>収集することも出来ません</b></div>
+      <div class="pb-sub">すべての処理はブラウザ内（端末内）で完結。画像がサーバーへ送信されることは一切ありません。オフラインでも動きます</div>
+    </div>
+  </section>
+
   <section class="panel" id="step1">
     <div class="step-head">
       <span class="step-num">1</span>
@@ -565,11 +587,11 @@ button { cursor: pointer; }
   <div class="container">
     <div>
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 1 1 8 0v4"/></svg>
-      完全ローカル処理 — 画像は端末内で処理され、どこにも送信されません
+      完全ローカル処理 — 画像は端末内で処理され、どこにも送信されません（収集も出来ません）
     </div>
     <div class="links">
       <a href="https://github.com/moruton1119/x-image-splitter" target="_blank" rel="noopener">GitHub</a>
-      <a href="https://github.com/moruton1119/discord-image-compressor" target="_blank" rel="noopener">兄弟アプリ: Discord 圧縮くん</a>
+      <a href="https://moruton1119.github.io/discord-image-compressor/" target="_blank" rel="noopener">兄弟アプリ: Discord 圧縮くん</a>
     </div>
     <div style="margin-top:8px; font-size:12px">© 2026 もるラボ / X(旧Twitter)はX Corp.の商標です。本サイトは非公式ツールです</div>
   </div>
