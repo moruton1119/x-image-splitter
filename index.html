@@ -117,17 +117,17 @@ button { cursor: pointer; }
   border-radius: var(--radius-pill); padding: 3px 12px; margin-bottom: var(--space-3); letter-spacing: 1.5px;
 }
 
-/* ── プライバシーバナー（色は抑えて静かに） ───── */
+/* ── プライバシーバナー（白ベース） ───── */
 .privacy-banner {
   display: flex; align-items: center; gap: 14px;
-  border: 1px solid var(--border); border-radius: 14px;
-  background: var(--surface);
+  border: 1px solid rgba(0,0,0,0.12); border-radius: 14px;
+  background: #ffffff;
   padding: 16px 20px; margin: 0 0 var(--space-5);
 }
-.privacy-banner .pb-icon { flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; background: var(--bg-2, rgba(255,255,255,0.06)); display: flex; align-items: center; justify-content: center; color: var(--fg-2); }
-.privacy-banner .pb-title { font-weight: 700; font-size: clamp(15px, 2.6vw, 18px); color: var(--fg); line-height: 1.4; }
-.privacy-banner .pb-title b { color: var(--fg); }
-.privacy-banner .pb-sub { font-size: var(--text-sm); color: var(--fg-2); margin-top: 4px; line-height: 1.5; }
+.privacy-banner .pb-icon { flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; background: rgba(0,0,0,0.06); display: flex; align-items: center; justify-content: center; color: #444; }
+.privacy-banner .pb-title { font-weight: 700; font-size: clamp(15px, 2.6vw, 18px); color: #111; line-height: 1.4; }
+.privacy-banner .pb-title b { color: #111; }
+.privacy-banner .pb-sub { font-size: var(--text-sm); color: #555; margin-top: 4px; line-height: 1.5; }
 
 /* ── Panel / card ──────────────────────── */
 .panel {
